@@ -1,30 +1,32 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const User = require('../models/User');
-const Doctor = require('../models/Doctor');
-const Department = require('../models/Department');
+const User        = require('../models/User');
+const Doctor      = require('../models/Doctor');
+const Department  = require('../models/Department');
 const Appointment = require('../models/Appointment');
-const Queue = require('../models/Queue');
-const Notification = require('../models/Notification');
+const Queue       = require('../models/Queue');
+const Notification   = require('../models/Notification');
+const MedicalRecord  = require('../models/MedicalRecord');
 const generateQueueNumber = require('../utils/generateQueueNumber');
-const queueService = require('../services/queueService');
+const queueService        = require('../services/queueService');
 
 const seedDB = async () => {
   try {
     console.log('Connecting to database...');
-    await mongoose.connect(process.env.MONGO_URI, {
+    await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
     console.log('MongoDB Connected');
 
     console.log('Clearing existing data...');
-    await User.deleteMany();
+    await MedicalRecord.deleteMany();
+    await Notification.deleteMany();
+    await Queue.deleteMany();
+    await Appointment.deleteMany();
     await Doctor.deleteMany();
     await Department.deleteMany();
-    await Appointment.deleteMany();
-    await Queue.deleteMany();
-    await Notification.deleteMany();
+    await User.deleteMany();
     console.log('Data cleared');
 
     console.log('Creating Admin...');
@@ -38,12 +40,12 @@ const seedDB = async () => {
 
     console.log('Creating Departments...');
     const departments = await Department.create([
-      { name: 'Cardiology', description: 'Heart and blood vessel conditions' },
-      { name: 'Neurology', description: 'Brain, spinal cord and nervous system' },
-      { name: 'Orthopedics', description: 'Bones, joints, ligaments, tendons, and muscles' },
-      { name: 'Dermatology', description: 'Skin, hair, and nail conditions' },
-      { name: 'Pediatrics', description: 'Medical care for infants, children, and adolescents' },
-      { name: 'General Medicine', description: 'Primary care and general health issues' },
+      { name: 'Cardiology',      description: 'Heart and blood vessel conditions',            icon: 'heart',         services: ['ECG', 'Echocardiography', 'Cardiac Catheterization'] },
+      { name: 'Neurology',       description: 'Brain, spinal cord and nervous system',         icon: 'brain',         services: ['EEG', 'MRI Brain', 'Nerve Conduction Study'] },
+      { name: 'Orthopedics',     description: 'Bones, joints, ligaments, tendons, and muscles', icon: 'bone',         services: ['X-ray', 'Joint Replacement', 'Physiotherapy'] },
+      { name: 'Dermatology',     description: 'Skin, hair, and nail conditions',               icon: 'sparkles',      services: ['Skin Biopsy', 'Patch Test', 'Laser Therapy'] },
+      { name: 'Pediatrics',      description: 'Medical care for infants, children, and adolescents', icon: 'baby',    services: ['Vaccinations', 'Growth Assessment', 'Developmental Screening'] },
+      { name: 'General Medicine', description: 'Primary care and general health issues',       icon: 'stethoscope',   services: ['Annual Physical', 'Blood Tests', 'Health Screening'] },
     ]);
 
     console.log('Creating Doctors...');
@@ -63,39 +65,56 @@ const seedDB = async () => {
     const specialties = ['Cardiology', 'Neurology', 'Orthopedics', 'Dermatology', 'Pediatrics', 'General Medicine', 'Cardiology', 'General Medicine'];
     
     for (let i = 0; i < 8; i++) {
+      // Find the matching department to link departmentId
+      const dept = departments.find(d => d.name === specialties[i]);
       const profile = await Doctor.create({
-        userId: doctorUsers[i]._id,
-        specialty: specialties[i],
-        qualifications: ['MBBS', 'MD'],
-        experience: 5 + i,
+        userId:              doctorUsers[i]._id,
+        departmentId:        dept ? dept._id : undefined,
+        specialty:           specialties[i],
+        qualifications:      ['MBBS', 'MD'],
+        experience:          5 + i,
         workingHours: {
           start: '09:00',
-          end: '17:00',
-          days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+          end:   '17:00',
+          days:  ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
         },
         consultationDuration: i % 2 === 0 ? 15 : 30,
-        fee: 50 + (i * 10),
-        bio: `Experienced specialist in ${specialties[i]}`
+        fee:                 500 + (i * 100),
+        bio:                 `Experienced specialist in ${specialties[i]} with ${5 + i} years of practice.`,
+        languages:           ['English', 'Hindi'],
       });
       doctorProfiles.push(profile);
       
-      // Update department head
-      const deptIndex = departments.findIndex(d => d.name === specialties[i]);
-      if (deptIndex !== -1 && !departments[deptIndex].headDoctorId) {
-        departments[deptIndex].headDoctorId = profile._id;
-        await departments[deptIndex].save();
+      // Set department head to first doctor of that specialty
+      if (dept && !dept.headDoctorId) {
+        dept.headDoctorId = profile._id;
+        await dept.save();
       }
     }
 
     console.log('Creating Patients...');
+    const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'O+', 'O-'];
+    const genders     = ['male', 'female', 'other'];
     const patients = [];
     for (let i = 1; i <= 15; i++) {
       const patient = await User.create({
-        name: `Patient ${i}`,
+        name:  `Patient ${i}`,
         email: `patient${i}@example.com`,
         password: 'Patient@123',
         role: 'patient',
-        phone: `12312312${i.toString().padStart(2, '0')}`
+        phone: `12312312${i.toString().padStart(2, '0')}`,
+        patientProfile: {
+          dateOfBirth:   new Date(1980 + i, i % 12, (i % 28) + 1),
+          gender:        genders[i % genders.length],
+          bloodGroup:    bloodGroups[i % bloodGroups.length],
+          allergies:     i % 3 === 0 ? ['Penicillin'] : [],
+          chronicConditions: i % 5 === 0 ? ['Hypertension'] : [],
+          emergencyContact: {
+            name:         `Emergency Contact ${i}`,
+            phone:        `98765432${i.toString().padStart(2, '0')}`,
+            relationship: 'Spouse',
+          },
+        },
       });
       patients.push(patient);
     }
@@ -126,13 +145,19 @@ const seedDB = async () => {
       const queueNumber = await generateQueueNumber(doctor._id, aptDate);
 
       const appointment = await Appointment.create({
-        patientId: patient._id,
-        doctorId: doctor._id,
-        date: aptDate,
-        timeSlot: { start: startStr, end: endStr },
+        patientId:      patient._id,
+        doctorId:       doctor._id,
+        date:           aptDate,
+        timeSlot:       { start: startStr, end: endStr },
         queueNumber,
-        status: 'pending',
-        consultationFee: doctor.fee
+        status:         'pending',
+        chiefComplaint: 'Routine check-up',
+        payment: {
+          amount:   doctor.fee,
+          currency: 'INR',
+          status:   'pending',
+          method:   'online',
+        },
       });
 
       // Add to queue
