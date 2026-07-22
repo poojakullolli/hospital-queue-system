@@ -40,13 +40,12 @@ Thumbs.db
 # Uploads
 backend/uploads/
 
-# Coverage
+# Testing — test files ARE tracked; only ignore generated artifacts
 coverage/
 .nyc_output
 
-# Testing
-*.test.js
-*.spec.js
+# MongoDB Memory Server binary cache (downloaded on first test run)
+.cache-mongodb-memory-server/
 
 # Misc
 .gemini/

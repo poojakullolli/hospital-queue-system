@@ -223,23 +223,60 @@ NODE_ENV=production npm start
 
 ## 🔌 API Endpoints
 
+### Authentication
+
+| Method | Endpoint | Description | Auth | Rate Limit |
+|--------|----------|-------------|------|------------|
+| POST | `/api/auth/register` | General registration (patient/doctor) | Public | 10/15min |
+| POST | `/api/auth/register/patient` | Explicit patient registration | Public | 10/15min |
+| POST | `/api/auth/register/doctor` | Doctor registration (creates Doctor profile) | Public | 10/15min |
+| POST | `/api/auth/login` | Login (all roles) | Public | 10/15min |
+| POST | `/api/auth/admin/login` | Admin-only login | Public | 10/15min |
+| POST | `/api/auth/refresh` | Refresh access token (rotate) | Cookie/Body | — |
+| GET | `/api/auth/me` | Get current user profile | 🔒 Protected | — |
+| POST | `/api/auth/logout` | Logout (clears session) | 🔒 Protected | — |
+| PUT | `/api/auth/updatepassword` | Change password | 🔒 Protected | — |
+| POST | `/api/auth/forgot-password` | Send password reset email | Public | 3/60min |
+| POST | `/api/auth/reset-password` | Reset password with token | Public | — |
+| GET | `/api/auth/verify-email?token=...` | Verify email address | Public | — |
+| POST | `/api/auth/resend-verification` | Resend verification email | 🔒 Protected | — |
+
+### Other Endpoints
+
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | `/api/auth/register` | Register new user | Public |
-| POST | `/api/auth/login` | Login | Public |
-| POST | `/api/auth/refresh` | Refresh access token | Public |
-| GET | `/api/auth/me` | Get current user | Protected |
-| GET | `/api/doctors` | List doctors (filterable) | Public |
+| GET | `/api/doctors` | List doctors (filterable by specialty/date) | Public |
 | GET | `/api/doctors/:id/slots` | Get available time slots | Public |
-| POST | `/api/appointments` | Book appointment | Patient |
-| GET | `/api/appointments` | Get my appointments | Protected |
-| PUT | `/api/appointments/:id/status` | Update appointment status | Doctor |
-| GET | `/api/queue/:doctorId` | Get doctor's queue | Protected |
-| POST | `/api/queue/:doctorId/advance` | Advance to next patient | Doctor |
-| GET | `/api/admin/stats` | Dashboard statistics | Admin |
-| GET | `/api/admin/analytics` | System analytics | Admin |
+| POST | `/api/appointments` | Book appointment | 🔒 Patient |
+| GET | `/api/appointments` | Get my appointments | 🔒 Protected |
+| PUT | `/api/appointments/:id/status` | Update appointment status | 🔒 Doctor |
+| GET | `/api/queues/:doctorId` | Get doctor's live queue | 🔒 Protected |
+| POST | `/api/queues/:doctorId/advance` | Advance to next patient | 🔒 Doctor |
+| GET | `/api/admin/stats` | Dashboard statistics | 🔒 Admin |
+| GET | `/api/notifications` | Get my notifications | 🔒 Protected |
 
-Full API documentation: `http://localhost:5000/api/health`
+Full API: `http://localhost:5000/api/health`
+
+---
+
+## 🧪 Running Tests
+
+```bash
+cd backend
+
+# Run all tests (uses in-memory MongoDB — no real DB needed)
+npm test
+
+# Watch mode
+npm run test:watch
+
+# With coverage report
+npm test -- --coverage
+```
+
+Tests cover: patient registration, doctor registration, admin login, JWT auth,
+protected routes, RBAC, token refresh, forgot/reset password, email verification,
+and validation edge cases.
 
 ---
 
