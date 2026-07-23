@@ -9,6 +9,7 @@ const path = require('path');
 
 const connectDB = require('./src/config/db');
 const { initSocket } = require('./src/config/socket');
+const { setupSwagger } = require('./src/config/swagger');
 const routes = require('./src/routes/index');
 const { errorHandler, notFound } = require('./src/middleware/errorHandler');
 
@@ -24,6 +25,7 @@ initSocket(server);
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: false, // allow Swagger UI assets
 }));
 
 app.use(cors({
@@ -41,6 +43,9 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 // Static files (uploaded avatars etc.)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// ─── Swagger API Documentation ────────────────────────────────────────────────
+setupSwagger(app);
+
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api', routes);
 
@@ -49,6 +54,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     message: 'Hospital Queue System API is running',
+    swagger: 'http://localhost:5000/api-docs',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   });
@@ -63,6 +69,7 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`\n🏥 Hospital Queue System Backend`);
   console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📑 Swagger Documentation: http://localhost:${PORT}/api-docs`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
   console.log(`📡 Socket.IO listening for connections\n`);
 });

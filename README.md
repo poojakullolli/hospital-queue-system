@@ -268,6 +268,7 @@ NODE_ENV=production npm start
 | PUT | `/api/notifications/read-all` | Mark all notifications as read | 🔒 Protected |
 
 Full API: `http://localhost:5000/api/health`
+📑 **Interactive Swagger API Documentation**: [http://localhost:5000/api-docs](http://localhost:5000/api-docs)
 
 ---
 
