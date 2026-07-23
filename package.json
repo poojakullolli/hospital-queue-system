@@ -1,0 +1,10 @@
+{
+  "name": "hospital-queue-system",
+  "version": "1.0.0",
+  "description": "Hospital Smart Appointment and Live Queue Management System",
+  "scripts": {
+    "speed": "npm run dev --prefix backend",
+    "dev": "npm run dev --prefix frontend",
+    "seed": "npm run seed --prefix backend"
+  }
+}
