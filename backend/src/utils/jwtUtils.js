@@ -1,23 +1,40 @@
 /**
- * @fileoverview JWT Utilities — generate and verify access + refresh tokens.
- *
- * Token strategy:
- *   - Access token:  short-lived (15 min default), sent in Authorization header
- *   - Refresh token: long-lived (7 days default), stored in HttpOnly cookie + DB
- *   - Email verification token: 24-hour window, stored hashed in DB
- *   - Password reset token:     10-minute window, stored hashed in DB
+ * @fileoverview JWT Security Utilities — token generation, HS256 algorithm enforcement,
+ * cryptographic token hashing, and token revocation / blacklisting.
  */
 
-const jwt  = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+
+// In-memory token blacklist for immediate token revocation upon logout
+const revokedTokenBlacklist = new Set();
+
+/**
+ * Revoke/blacklist a JWT token.
+ */
+const revokeToken = (token) => {
+  if (token) revokedTokenBlacklist.add(token);
+};
+
+/**
+ * Check if a JWT token has been revoked.
+ */
+const isTokenRevoked = (token) => {
+  return revokedTokenBlacklist.has(token);
+};
 
 /**
  * Generate a signed JWT access token.
- * @param {{ id: string, role: string }} payload
- * @returns {string}
  */
 const generateAccessToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET, {
+  const secret = process.env.JWT_SECRET || 'default_jwt_secret_key_at_least_32_chars';
+  const cleanPayload = {
+    id: (payload.id || payload._id).toString(),
+    role: payload.role,
+  };
+
+  return jwt.sign(cleanPayload, secret, {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_EXPIRES_IN || '15m',
     issuer:    'mediqueue',
     audience:  'mediqueue-client',
@@ -26,11 +43,16 @@ const generateAccessToken = (payload) => {
 
 /**
  * Generate a signed JWT refresh token.
- * @param {{ id: string, role: string }} payload
- * @returns {string}
  */
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+  const secret = process.env.JWT_REFRESH_SECRET || 'default_refresh_secret_key_at_least_32_chars';
+  const cleanPayload = {
+    id: (payload.id || payload._id).toString(),
+    role: payload.role,
+  };
+
+  return jwt.sign(cleanPayload, secret, {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
     issuer:    'mediqueue',
     audience:  'mediqueue-client',
@@ -38,37 +60,43 @@ const generateRefreshToken = (payload) => {
 };
 
 /**
- * Verify a JWT access token.
- * @param {string} token
- * @returns {object} Decoded payload
- * @throws {JsonWebTokenError|TokenExpiredError}
+ * Verify a JWT access token with HS256 algorithm enforcement & revocation check.
  */
 const verifyAccessToken = (token) => {
-  return jwt.verify(token, process.env.JWT_SECRET, {
-    issuer:   'mediqueue',
-    audience: 'mediqueue-client',
+  if (isTokenRevoked(token)) {
+    const error = new Error('Token has been revoked.');
+    error.name = 'JsonWebTokenError';
+    throw error;
+  }
+
+  const secret = process.env.JWT_SECRET || 'default_jwt_secret_key_at_least_32_chars';
+  return jwt.verify(token, secret, {
+    algorithms: ['HS256'],
+    issuer:     'mediqueue',
+    audience:   'mediqueue-client',
   });
 };
 
 /**
- * Verify a JWT refresh token.
- * @param {string} token
- * @returns {object} Decoded payload
- * @throws {JsonWebTokenError|TokenExpiredError}
+ * Verify a JWT refresh token with HS256 algorithm enforcement & revocation check.
  */
 const verifyRefreshToken = (token) => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET, {
-    issuer:   'mediqueue',
-    audience: 'mediqueue-client',
+  if (isTokenRevoked(token)) {
+    const error = new Error('Token has been revoked.');
+    error.name = 'JsonWebTokenError';
+    throw error;
+  }
+
+  const secret = process.env.JWT_REFRESH_SECRET || 'default_refresh_secret_key_at_least_32_chars';
+  return jwt.verify(token, secret, {
+    algorithms: ['HS256'],
+    issuer:     'mediqueue',
+    audience:   'mediqueue-client',
   });
 };
 
 /**
- * Generate a cryptographically secure random token (for email verification
- * and password reset). Returns both the raw token (sent to user) and its
- * SHA-256 hash (stored in the database).
- *
- * @returns {{ rawToken: string, hashedToken: string }}
+ * Cryptographically secure random token generator for password reset & email verification.
  */
 const generateSecureToken = () => {
   const rawToken    = crypto.randomBytes(32).toString('hex');
@@ -77,13 +105,22 @@ const generateSecureToken = () => {
 };
 
 /**
- * Hash a raw token for comparison against the stored hash.
- * @param {string} rawToken
- * @returns {string}
+ * Hash a raw token for database lookup.
  */
 const hashToken = (rawToken) => {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
 };
+
+/**
+ * Secure Cookie Options for JWT Refresh Tokens
+ */
+const getSecureCookieOptions = () => ({
+  httpOnly: true,
+  secure:   process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
+  path:     '/',
+});
 
 module.exports = {
   generateAccessToken,
@@ -92,4 +129,7 @@ module.exports = {
   verifyRefreshToken,
   generateSecureToken,
   hashToken,
+  revokeToken,
+  isTokenRevoked,
+  getSecureCookieOptions,
 };

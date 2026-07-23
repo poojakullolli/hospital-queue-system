@@ -293,13 +293,12 @@ userSchema.virtual('doctorProfile', {
  * Pre-save: Hash password with bcrypt if it was modified.
  * Also stamps lastLogin when refreshToken is set (proxy for login events).
  */
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   // Only re-hash when password field changed
   if (this.isModified('password')) {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
   }
-  next();
 });
 
 /**

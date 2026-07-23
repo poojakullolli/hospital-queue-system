@@ -23,12 +23,14 @@ const Doctor = require('../models/Doctor');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError     = require('../middleware/AppError');
 const { successResponse } = require('../utils/apiResponse');
+const { logSecurityEvent, SEVERITY } = require('../utils/auditLogger');
 const {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
   generateSecureToken,
   hashToken,
+  revokeToken,
 } = require('../utils/jwtUtils');
 const {
   sendWelcomeEmail,
@@ -153,23 +155,12 @@ exports.registerPatient = asyncHandler(async (req, res, next) => {
   return exports.register(req, res, next);
 });
 
-// ─── POST /api/auth/register/doctor ──────────────────────────────────────────
-/**
- * Doctor registration — same as /register with role forced to 'doctor'.
- * Requires specialty, qualifications, experience, fee in body.
- */
 exports.registerDoctor = asyncHandler(async (req, res, next) => {
   req.body.role = 'doctor';
   return exports.register(req, res, next);
 });
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
-/**
- * Login for all roles (patient, doctor, admin).
- * - Verifies email + password
- * - Updates lastLogin timestamp
- * - Issues access token + refresh token
- */
 exports.login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -177,34 +168,56 @@ exports.login = asyncHandler(async (req, res, next) => {
     return next(new AppError('Please provide an email and password', 400));
   }
 
-  // findByEmailWithPassword includes password + refreshToken (both select:false)
   const user = await User.findByEmailWithPassword(email.toLowerCase().trim());
 
   if (!user) {
+    logSecurityEvent({
+      eventType: 'USER_LOGIN_FAILED',
+      severity: SEVERITY.WARN,
+      message: `Failed login attempt for non-existent email: ${email}`,
+      req,
+    });
     return next(new AppError('Invalid credentials', 401));
   }
 
   if (!user.isActive) {
+    logSecurityEvent({
+      eventType: 'USER_LOGIN_BLOCKED',
+      severity: SEVERITY.HIGH,
+      message: `Login attempt for deactivated user account: ${user.email}`,
+      req,
+      userId: user._id,
+    });
     return next(new AppError('Your account has been deactivated. Please contact support.', 403));
   }
 
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
+    logSecurityEvent({
+      eventType: 'USER_LOGIN_FAILED',
+      severity: SEVERITY.WARN,
+      message: `Incorrect password attempt for user: ${user.email}`,
+      req,
+      userId: user._id,
+    });
     return next(new AppError('Invalid credentials', 401));
   }
 
-  // Stamp last login
   user.lastLogin = new Date();
-  // token save handled in sendTokenResponse
+
+  logSecurityEvent({
+    eventType: 'USER_LOGIN_SUCCESS',
+    severity: SEVERITY.INFO,
+    message: `User logged in successfully: ${user.email}`,
+    req,
+    userId: user._id,
+    userRole: user.role,
+  });
 
   sendTokenResponse(user, 200, res);
 });
 
 // ─── POST /api/auth/admin/login ───────────────────────────────────────────────
-/**
- * Admin-only login endpoint. Identical to /login but rejects non-admin users
- * with a 403 before issuing any tokens.
- */
 exports.adminLogin = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -215,11 +228,23 @@ exports.adminLogin = asyncHandler(async (req, res, next) => {
   const user = await User.findByEmailWithPassword(email.toLowerCase().trim());
 
   if (!user) {
+    logSecurityEvent({
+      eventType: 'ADMIN_LOGIN_FAILED',
+      severity: SEVERITY.HIGH,
+      message: `Failed admin login attempt for email: ${email}`,
+      req,
+    });
     return next(new AppError('Invalid credentials', 401));
   }
 
-  // Role gate — only allow admin
   if (user.role !== 'admin') {
+    logSecurityEvent({
+      eventType: 'UNAUTHORIZED_ADMIN_LOGIN_ATTEMPT',
+      severity: SEVERITY.CRITICAL,
+      message: `Non-admin user ${user.email} attempted admin login`,
+      req,
+      userId: user._id,
+    });
     return next(new AppError('Access restricted to administrators only', 403));
   }
 
@@ -229,22 +254,50 @@ exports.adminLogin = asyncHandler(async (req, res, next) => {
 
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
+    logSecurityEvent({
+      eventType: 'ADMIN_LOGIN_FAILED',
+      severity: SEVERITY.HIGH,
+      message: `Incorrect password for admin user: ${user.email}`,
+      req,
+      userId: user._id,
+    });
     return next(new AppError('Invalid credentials', 401));
   }
 
   user.lastLogin = new Date();
+  logSecurityEvent({
+    eventType: 'ADMIN_LOGIN_SUCCESS',
+    severity: SEVERITY.INFO,
+    message: `Admin user logged in: ${user.email}`,
+    req,
+    userId: user._id,
+  });
+
   sendTokenResponse(user, 200, res);
 });
 
 // ─── POST /api/auth/logout ────────────────────────────────────────────────────
-/**
- * Logout — clear refresh token from DB and expire the cookie.
- * Requires auth (protect middleware). Access token expires naturally.
- */
 exports.logout = asyncHandler(async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+  if (token) {
+    revokeToken(token);
+  }
+
   if (req.user) {
     req.user.refreshToken = undefined;
     await req.user.save({ validateBeforeSave: false });
+
+    logSecurityEvent({
+      eventType: 'USER_LOGOUT',
+      severity: SEVERITY.INFO,
+      message: `User logged out: ${req.user.email}`,
+      req,
+      userId: req.user._id,
+      userRole: req.user.role,
+    });
   }
 
   res.cookie('refreshToken', 'none', {

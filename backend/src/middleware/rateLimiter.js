@@ -1,71 +1,90 @@
 /**
- * @fileoverview Rate Limiter Middleware — protect auth endpoints from brute-force attacks.
- *
- * Uses express-rate-limit to limit repeated requests by IP address.
- *
- * Limiters:
- *   authLimiter      — strict limit for login/register (5 req / 15 min)
- *   forgotPwLimiter  — very strict for forgot-password (3 req / 60 min)
- *   generalLimiter   — soft limit for all other API routes (100 req / 15 min)
+ * @fileoverview Express Rate Limiters for Brute-Force & Anti-DDoS defense.
+ * Automatically skips rate limits in test environments (NODE_ENV === 'test').
+ * Triggers SOC audit log entries whenever rate limits are breached.
  */
 
 const rateLimit = require('express-rate-limit');
+const { logSecurityEvent, SEVERITY } = require('../utils/auditLogger');
+
+const skipInTest = () => process.env.NODE_ENV === 'test';
 
 /**
- * Create a standardized rate limit response.
- * @param {string} action - Human-readable description of the limited action
- * @param {number} minutes - Window duration in minutes
- * @returns {function} express-rate-limit handler
+ * 1. Global API Rate Limiter (100 requests per 15 minutes per IP)
  */
-const createLimitHandler = (action, minutes) => (req, res) => {
-  res.status(429).json({
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTest,
+  message: {
     success: false,
-    message: `Too many ${action} attempts from this IP. Please try again after ${minutes} minutes.`,
-    retryAfter: `${minutes} minutes`,
-  });
-};
+    message: 'Too many requests from this IP. Please try again after 15 minutes.',
+  },
+  handler: (req, res, next, options) => {
+    logSecurityEvent({
+      eventType: 'RATE_LIMIT_EXCEEDED',
+      severity: SEVERITY.MEDIUM,
+      message: `Global rate limit exceeded (100 reqs / 15 mins)`,
+      req,
+    });
+    res.status(429).json(options.message);
+  },
+});
 
 /**
- * Strict rate limiter for authentication endpoints.
- * 5 requests per 15-minute window per IP.
- *
- * Applied to: POST /api/auth/login, POST /api/auth/register, POST /api/auth/admin/login
+ * 2. Strict Authentication Rate Limiter (10 attempts per 15 minutes per IP)
  */
 const authLimiter = rateLimit({
-  windowMs:         15 * 60 * 1000, // 15 minutes
-  max:              10,              // 10 requests per window (generous for dev)
-  standardHeaders:  true,           // Return rate limit info in RateLimit-* headers
-  legacyHeaders:    false,
-  handler:          createLimitHandler('authentication', 15),
-  skip: () => process.env.NODE_ENV === 'development', // Skip in development
-});
-
-/**
- * Very strict rate limiter for forgot-password endpoint.
- * 3 requests per 60-minute window per IP.
- * Prevents email flooding.
- */
-const forgotPasswordLimiter = rateLimit({
-  windowMs:         60 * 60 * 1000, // 1 hour
-  max:              3,               // only 3 forgot-password requests per hour
-  standardHeaders:  true,
-  legacyHeaders:    false,
-  handler:          createLimitHandler('password reset', 60),
-  skip: () => process.env.NODE_ENV === 'development',
-});
-
-/**
- * General API rate limiter.
- * 100 requests per 15-minute window per IP.
- * Applied to all /api/* routes in server.js.
- */
-const generalLimiter = rateLimit({
-  windowMs:        15 * 60 * 1000,  // 15 minutes
-  max:             100,             // generous limit for normal usage
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   standardHeaders: true,
-  legacyHeaders:   false,
-  handler:         createLimitHandler('API', 15),
-  skip: () => process.env.NODE_ENV === 'development',
+  legacyHeaders: false,
+  skip: skipInTest,
+  message: {
+    success: false,
+    message: 'Too many authentication attempts. Please try again after 15 minutes.',
+  },
+  handler: (req, res, next, options) => {
+    logSecurityEvent({
+      eventType: 'AUTH_BRUTE_FORCE_ATTEMPT',
+      severity: SEVERITY.HIGH,
+      message: `Authentication rate limit exceeded for IP`,
+      req,
+      metadata: { target_email: req.body?.email },
+    });
+    res.status(429).json(options.message);
+  },
 });
 
-module.exports = { authLimiter, forgotPasswordLimiter, generalLimiter };
+/**
+ * 3. Sensitive Action Rate Limiter (30 requests per 5 minutes per IP)
+ */
+const sensitiveLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTest,
+  message: {
+    success: false,
+    message: 'Too many sensitive operations requested. Please slow down.',
+  },
+  handler: (req, res, next, options) => {
+    logSecurityEvent({
+      eventType: 'SENSITIVE_ACTION_RATE_LIMIT',
+      severity: SEVERITY.MEDIUM,
+      message: `Sensitive action rate limit breached`,
+      req,
+    });
+    res.status(429).json(options.message);
+  },
+});
+
+module.exports = {
+  apiLimiter,
+  authLimiter,
+  forgotPasswordLimiter: authLimiter,
+  sensitiveLimiter,
+};

@@ -18,6 +18,12 @@ const nodemailer = require('nodemailer');
  * @returns {nodemailer.Transporter}
  */
 const createTransporter = () => {
+  if (process.env.NODE_ENV === 'test') {
+    return {
+      sendMail: async (options) => ({ messageId: 'test-mock-id' }),
+    };
+  }
+
   return nodemailer.createTransport({
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
     port:   parseInt(process.env.EMAIL_PORT || '587', 10),
