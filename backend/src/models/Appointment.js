@@ -361,11 +361,10 @@ appointmentSchema.virtual('medicalRecord', {
 /**
  * Pre-save: push a new statusHistory entry whenever status changes.
  */
-appointmentSchema.pre('save', function (next) {
+appointmentSchema.pre('save', function () {
   if (this.isModified('status')) {
     this.statusHistory.push({ status: this.status });
   }
-  next();
 });
 
 // ─── Instance Methods ──────────────────────────────────────────────────────────

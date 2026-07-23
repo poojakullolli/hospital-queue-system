@@ -33,10 +33,10 @@ const validate = (req, res, next) => {
 // ─── Reusable field rules ────────────────────────────────────────────────────
 const nameRule = () =>
   check('name')
+    .customSanitizer((val, { req }) => req.body.name || req.body.fullName)
     .trim()
     .notEmpty().withMessage('Name is required')
-    .isLength({ min: 2, max: 80 }).withMessage('Name must be between 2 and 80 characters')
-    .matches(/^[a-zA-Z\s.'-]+$/).withMessage('Name can only contain letters, spaces, dots, hyphens, or apostrophes');
+    .isLength({ min: 2, max: 80 }).withMessage('Name must be between 2 and 80 characters');
 
 const emailRule = (field = 'email') =>
   check(field)
@@ -48,7 +48,7 @@ const emailRule = (field = 'email') =>
 const passwordRule = (field = 'password', label = 'Password') =>
   check(field)
     .notEmpty().withMessage(`${label} is required`)
-    .isLength({ min: 8 }).withMessage(`${label} must be at least 8 characters`)
+    .isLength({ min: 6 }).withMessage(`${label} must be at least 6 characters`)
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage(
       `${label} must contain at least one uppercase letter, one lowercase letter, and one number`
     );

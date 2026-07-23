@@ -73,6 +73,7 @@ const sendTokenResponse = async (user, statusCode, res) => {
     .json({
       success: true,
       accessToken,
+      token: accessToken,
       user: {
         id:              user._id,
         name:            user.name,

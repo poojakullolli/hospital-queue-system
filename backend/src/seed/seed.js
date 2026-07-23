@@ -13,11 +13,16 @@ const queueService        = require('../services/queueService');
 const seedDB = async () => {
   try {
     console.log('Connecting to database...');
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log('MongoDB Connected');
+    try {
+      await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 2500 });
+      console.log('MongoDB Connected');
+    } catch (err) {
+      console.log('ℹ️  Local MongoDB daemon not running. Launching MongoMemoryServer for seeding...');
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      const mongod = await MongoMemoryServer.create();
+      await mongoose.connect(mongod.getUri());
+      console.log('✅ MongoMemoryServer Connected');
+    }
 
     console.log('Clearing existing data...');
     await MedicalRecord.deleteMany();
@@ -123,20 +128,31 @@ const seedDB = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const usedSlots = new Set();
+
     for (let i = 0; i < 20; i++) {
-      const patient = patients[Math.floor(Math.random() * patients.length)];
-      const doctor = doctorProfiles[Math.floor(Math.random() * doctorProfiles.length)];
-      
+      const patient = patients[i % patients.length];
+      const doctor  = doctorProfiles[i % doctorProfiles.length];
+
       // Spread across next 7 days
-      const daysToAdd = Math.floor(Math.random() * 7);
+      const daysToAdd = Math.floor(i / 3); // predictable spacing
       const aptDate = new Date(today);
       aptDate.setDate(today.getDate() + daysToAdd);
+      aptDate.setHours(0, 0, 0, 0);
 
-      // Random time between 9 and 16
-      const hour = 9 + Math.floor(Math.random() * 7);
-      const minute = doctor.consultationDuration === 15 ? (Math.floor(Math.random() * 4) * 15) : (Math.floor(Math.random() * 2) * 30);
-      
-      const startStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      // Unique time slot allocation per doctor per day
+      let hour = 9 + (i % 7);
+      let minute = (i * 15) % 60;
+      let startStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      let slotKey = `${doctor._id}_${aptDate.toDateString()}_${startStr}`;
+
+      while (usedSlots.has(slotKey)) {
+        minute = (minute + 15) % 60;
+        if (minute === 0) hour = hour >= 16 ? 9 : hour + 1;
+        startStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        slotKey = `${doctor._id}_${aptDate.toDateString()}_${startStr}`;
+      }
+      usedSlots.add(slotKey);
       const endMin = minute + doctor.consultationDuration;
       const endHour = hour + Math.floor(endMin / 60);
       const finalEndMin = endMin % 60;
@@ -161,7 +177,7 @@ const seedDB = async () => {
       });
 
       // Add to queue
-      await queueService.addToQueue(doctor._id, appointment._id, aptDate);
+      await queueService.addToQueue(doctor._id, appointment._id, patient._id, queueNumber, { start: startStr, end: endStr }, false, aptDate);
     }
 
     console.log('Seeding completed successfully!');

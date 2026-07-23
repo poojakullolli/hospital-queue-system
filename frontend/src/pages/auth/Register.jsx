@@ -16,12 +16,19 @@ const Register = () => {
 
   const onSubmit = async (data) => {
     try {
-      const payload = { ...data, role: 'patient' };
-      delete payload.confirmPassword;
+      const payload = {
+        name: data.fullName || data.name,
+        email: data.email,
+        phone: data.phone,
+        password: data.password,
+        role: 'patient',
+      };
       const user = await registerUser(payload);
-      navigate(`/${user.role}/dashboard`);
+      if (user?.role) {
+        navigate(`/${user.role}/dashboard`);
+      }
     } catch (error) {
-      console.error(error);
+      console.error('Registration submit error:', error);
     }
   };
 

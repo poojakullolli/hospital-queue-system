@@ -443,7 +443,6 @@ const medicalRecordSchema = new mongoose.Schema(
 // ─── Indexes ───────────────────────────────────────────────────────────────────
 medicalRecordSchema.index({ patientId: 1, visitDate: -1 });   // patient history (most recent first)
 medicalRecordSchema.index({ doctorId: 1, visitDate: -1 });    // doctor's past consultations
-medicalRecordSchema.index({ appointmentId: 1 }, { unique: true }); // one record per appointment
 medicalRecordSchema.index({ 'diagnoses.icdCode': 1 });        // diagnosis-based search
 medicalRecordSchema.index({ visitDate: -1 });                 // admin date-range reports
 
@@ -452,7 +451,7 @@ medicalRecordSchema.index({ visitDate: -1 });                 // admin date-rang
  * Pre-save: auto-lock records 24 hours after initial creation.
  * We check via a field rather than TTL so admins can override.
  */
-medicalRecordSchema.pre('save', function (next) {
+medicalRecordSchema.pre('save', function () {
   if (!this.isNew && !this.isLocked) {
     const hoursSinceCreation = (Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60);
     if (hoursSinceCreation >= 24) {
@@ -460,7 +459,6 @@ medicalRecordSchema.pre('save', function (next) {
       this.lockedAt = new Date();
     }
   }
-  next();
 });
 
 // ─── Instance Methods ──────────────────────────────────────────────────────────

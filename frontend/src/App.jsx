@@ -60,10 +60,14 @@ function App() {
               }}
             />
             <Routes>
-              {/* Public Routes */}
+              {/* Public & Role Portal Login Routes */}
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/admin/login" element={<Login portalRole="admin" />} />
+              <Route path="/doctor/login" element={<Login portalRole="doctor" />} />
+              <Route path="/patient/login" element={<Login portalRole="patient" />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/patient/register" element={<Register />} />
               <Route path="/queue-board/:doctorId" element={<QueueBoard />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
 

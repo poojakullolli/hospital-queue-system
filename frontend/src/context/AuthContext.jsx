@@ -29,8 +29,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       const { data } = await authApi.login(credentials);
-      localStorage.setItem('mediqueue_token', data.token);
-      setToken(data.token);
+      const authToken = data.token || data.accessToken;
+      localStorage.setItem('mediqueue_token', authToken);
+      setToken(authToken);
       setUser(data.user);
       toast.success('Login successful!');
       return data.user;
@@ -43,8 +44,9 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const { data } = await authApi.register(userData);
-      localStorage.setItem('mediqueue_token', data.token);
-      setToken(data.token);
+      const authToken = data.token || data.accessToken;
+      localStorage.setItem('mediqueue_token', authToken);
+      setToken(authToken);
       setUser(data.user);
       toast.success('Registration successful!');
       return data.user;

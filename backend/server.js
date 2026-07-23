@@ -96,12 +96,24 @@ setupSwagger(app);
 // ─── 7. API Routes ────────────────────────────────────────────────────────────
 app.use('/api', routes);
 
+// ─── Root Route ───────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    message: '🏥 MediQueue Hospital Smart Appointment & Live Queue Backend API (Security Hardened)',
+    version: '1.0.0',
+    documentation: `http://${req.headers.host || 'localhost:5000'}/api-docs`,
+    health: `http://${req.headers.host || 'localhost:5000'}/api/health`,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     message: 'Hospital Queue System API is running (Security Hardened)',
-    swagger: 'http://localhost:5000/api-docs',
+    swagger: `http://${req.headers.host || 'localhost:5000'}/api-docs`,
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   });

@@ -131,7 +131,7 @@ departmentSchema.virtual('doctors', {
 /**
  * Pre-save: auto-generate slug from name if not provided.
  */
-departmentSchema.pre('save', function (next) {
+departmentSchema.pre('save', function () {
   if (this.isModified('name') && !this.slug) {
     this.slug = this.name
       .toLowerCase()
@@ -139,7 +139,6 @@ departmentSchema.pre('save', function (next) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
-  next();
 });
 
 // ─── Instance Methods ──────────────────────────────────────────────────────────
