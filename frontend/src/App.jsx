@@ -26,10 +26,14 @@ import Schedule        from './pages/doctor/Schedule';
 import DoctorAnalytics from './pages/doctor/Analytics';
 
 // Admin Pages
-import AdminDashboard from './pages/admin/Dashboard';
-import UserManagement from './pages/admin/UserManagement';
-import Departments from './pages/admin/Departments';
-import Analytics from './pages/admin/Analytics';
+import AdminDashboard   from './pages/admin/Dashboard';
+import UserManagement   from './pages/admin/UserManagement';
+import DoctorManagement from './pages/admin/Doctors';
+import PatientManagement from './pages/admin/Patients';
+import Departments      from './pages/admin/Departments';
+import HospitalSettings from './pages/admin/Settings';
+import Analytics        from './pages/admin/Analytics';
+import Reports          from './pages/admin/Reports';
 
 // Public Pages
 import Landing from './pages/Landing';
@@ -84,8 +88,12 @@ function App() {
               <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/users" element={<UserManagement />} />
+                <Route path="/admin/doctors" element={<DoctorManagement />} />
+                <Route path="/admin/patients" element={<PatientManagement />} />
                 <Route path="/admin/departments" element={<Departments />} />
+                <Route path="/admin/settings" element={<HospitalSettings />} />
                 <Route path="/admin/analytics" element={<Analytics />} />
+                <Route path="/admin/reports" element={<Reports />} />
               </Route>
 
               {/* Catch-all */}

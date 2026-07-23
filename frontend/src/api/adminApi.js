@@ -1,3 +1,6 @@
+/**
+ * Admin API — API communication for Admin Dashboard operations.
+ */
 import api from './axios';
 
 export const adminApi = {
@@ -10,4 +13,9 @@ export const adminApi = {
   updateDepartment: (id, data) => api.put(`/admin/departments/${id}`, data),
   deleteDepartment: (id) => api.delete(`/admin/departments/${id}`),
   getAnalytics: (params) => api.get('/admin/analytics', { params }),
+  
+  // Extended admin methods
+  getAllDoctors: (params) => api.get('/doctors', { params }),
+  updateDoctor: (id, data) => api.put(`/doctors/${id}`, data),
+  getAllAppointments: (params) => api.get('/appointments/my', { params }),
 };

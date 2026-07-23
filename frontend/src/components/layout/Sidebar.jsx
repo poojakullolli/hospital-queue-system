@@ -15,6 +15,10 @@ import {
   Building,
   BarChart3,
   Bell,
+  Stethoscope,
+  UserCheck,
+  Settings,
+  FileText,
 } from 'lucide-react';
 
 import { useNotifications } from '../../context/NotificationContext';
@@ -39,10 +43,14 @@ const Sidebar = ({ role, isOpen, onClose }) => {
       { name: 'Analytics',    path: '/doctor/analytics', icon: BarChart3       },
     ],
     admin: [
-      { name: 'Dashboard',   path: '/admin/dashboard',   icon: LayoutDashboard },
-      { name: 'Users',       path: '/admin/users',       icon: Users           },
-      { name: 'Departments', path: '/admin/departments', icon: Building        },
-      { name: 'Analytics',   path: '/admin/analytics',   icon: BarChart3       },
+      { name: 'Dashboard',    path: '/admin/dashboard',   icon: LayoutDashboard },
+      { name: 'User Management', path: '/admin/users',   icon: Users           },
+      { name: 'Doctors',      path: '/admin/doctors',     icon: Stethoscope     },
+      { name: 'Patients',     path: '/admin/patients',    icon: UserCheck       },
+      { name: 'Departments',  path: '/admin/departments', icon: Building        },
+      { name: 'Queue & Settings', path: '/admin/settings',icon: Settings        },
+      { name: 'Analytics',    path: '/admin/analytics',   icon: BarChart3       },
+      { name: 'Reports',      path: '/admin/reports',     icon: FileText        },
     ],
   };
 

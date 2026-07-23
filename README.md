@@ -21,10 +21,14 @@ A full-stack web application for hospitals to manage patient appointments and re
 - Daily appointment analytics
 
 ### 🛡️ Admin
-- Full user management (patients & doctors)
-- Department management
-- System-wide analytics and charts
-- Queue override controls
+- Overview dashboard with real-time KPI stats and trend charts
+- User Management (view, filter by role, edit role/status, activate/deactivate, add user)
+- Doctor Management (view, filter by specialty, edit fee/duration/bio, toggle availability)
+- Patient Management (directory, details view, status toggling)
+- Department Management (CRUD clinical units, assign head doctor)
+- Hospital Working Hours & Queue Settings (opd hours, emergency mode, slot duration, max queue limit)
+- Analytics Dashboard (volume area chart, department revenue/bookings bar chart, status pie chart)
+- Reports & Export Generator (printable hospital report layout, CSV dataset export)
 
 ### ⚡ Real-time Features
 - Socket.IO for live queue position updates
