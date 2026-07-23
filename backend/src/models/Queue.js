@@ -1,27 +1,18 @@
 /**
- * @fileoverview Queue Model — daily live queue for each doctor.
+ * @fileoverview Queue Model — daily live queue for each doctor with Smart Queue Engine capabilities.
  *
- * Relationships:
- *   - One Queue → One Doctor            (Queue.doctorId → Doctor._id)
- *   - One Queue → Many Appointments     (Queue.items[].appointmentId)
- *   - Queue.currentServing → Appointment (the patient currently with the doctor)
- *
- * Design:
- *   - One document per doctor per calendar day (composite unique index).
- *   - Queue items are embedded subdocuments (not just ObjectId refs) so that
- *     position, call-time, and wait-time snapshots are stored without extra queries.
- *   - The `items` array is ordered — index 0 is the current/next patient.
- *   - Served patients are moved to `completedItems[]` to keep `items[]` lean.
- *   - Analytics fields (avgServeTime, pauseDuration) enable wait-time estimation.
+ * Capabilities:
+ *   - Automatic Queue Number generation
+ *   - Real-time Position Tracking & Dynamic Estimated Wait Calculation
+ *   - Doctor Delay Offset Handling
+ *   - Emergency Priority Bump (moves patient to top of waiting list)
+ *   - Queue Reordering & Skipping
+ *   - Embedded Queue Items with atomic state transitions
  */
 
 const mongoose = require('mongoose');
 
 // ─── Sub-schema: Queue Item ────────────────────────────────────────────────────
-/**
- * Represents a single patient's slot in the live queue.
- * Stored as an embedded subdocument for atomic position updates.
- */
 const queueItemSchema = new mongoose.Schema(
   {
     /** The scheduled appointment this queue slot belongs to */
@@ -31,14 +22,14 @@ const queueItemSchema = new mongoose.Schema(
       required: true,
     },
 
-    /** Patient reference for quick display without deep population */
+    /** Patient reference */
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
 
-    /** Sequential ticket number displayed to the patient (e.g., A001) */
+    /** Sequential ticket number displayed to the patient (e.g. 104) */
     queueNumber: {
       type: Number,
       required: true,
@@ -55,18 +46,31 @@ const queueItemSchema = new mongoose.Schema(
       default: 'waiting',
     },
 
-    /** Booked time slot (snapshot — avoids join with Appointment) */
+    /** Emergency flag — true bumps item to front of waiting queue */
+    isEmergency: {
+      type: Boolean,
+      default: false,
+    },
+
+    /** Priority level */
+    priority: {
+      type: String,
+      enum: ['normal', 'high', 'emergency'],
+      default: 'normal',
+    },
+
+    /** Booked time slot snapshot */
     timeSlot: {
       start: String,
       end:   String,
     },
 
-    /** When the patient physically checked in at the reception desk */
+    /** When physical check-in occurred */
     checkedInAt: {
       type: Date,
     },
 
-    /** When the doctor called this patient (used to measure wait time) */
+    /** When the doctor called this patient */
     calledAt: {
       type: Date,
     },
@@ -81,16 +85,13 @@ const queueItemSchema = new mongoose.Schema(
       type: Date,
     },
 
-    /**
-     * Actual time spent with the doctor in minutes.
-     * Set when the item moves to 'completed' — feeds into averageConsultTime.
-     */
+    /** Actual time spent with doctor in minutes */
     actualConsultDuration: {
       type: Number,
       min: 0,
     },
 
-    /** Estimated wait time in minutes at the time of check-in (snapshot) */
+    /** Estimated wait snapshot at check-in */
     estimatedWaitAtCheckIn: {
       type: Number,
       min: 0,
@@ -113,81 +114,72 @@ const queueSchema = new mongoose.Schema(
       index: true,
     },
 
-    /**
-     * Calendar date for this queue.
-     * Stored at midnight UTC for consistent date comparisons.
-     */
+    /** Calendar date for this queue (midnight UTC) */
     date: {
       type: Date,
       required: [true, 'Queue date is required'],
     },
 
-    /**
-     * Active queue items (ordered).
-     * - items[0] is the current patient (or the next patient if none in-progress).
-     * - Pop from front when calling next, push to completedItems[].
-     */
+    /** Active ordered queue items */
     items: {
       type: [queueItemSchema],
       default: [],
     },
 
-    /**
-     * Completed/skipped/no-show items moved here to keep `items[]` small.
-     * Preserved for analytics and audit purposes.
-     */
+    /** Completed / skipped / no-show items archive */
     completedItems: {
       type: [queueItemSchema],
       default: [],
     },
 
-    /**
-     * Reference to the appointment currently being served.
-     * null when the queue is idle between patients.
-     */
+    /** Reference to appointment currently being served */
     currentServing: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Appointment',
       default: null,
     },
 
-    /**
-     * The queue ticket number most recently called (e.g., 5 means #5 is currently serving).
-     * Used for the public queue-board display.
-     */
+    /** Current ticket number being served */
     currentNumber: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    /**
-     * Auto-incrementing counter for assigning the next queue number.
-     * Survives cancellations (cancelled slots keep their number so existing patients
-     * aren't confused by number jumps).
-     */
+    /** Counter for next queue number */
     nextQueueNumber: {
       type: Number,
       default: 1,
       min: 1,
     },
 
-    /** Total patients who have been served today */
+    /** Total patients served today */
     servedCount: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    /**
-     * Rolling average consultation time in minutes, recalculated after each patient.
-     * Used to compute estimated wait time for patients.
-     */
+    /** Rolling average consultation time in minutes */
     averageConsultTime: {
       type: Number,
       default: 15,
       min: 1,
       max: 120,
+    },
+
+    /** Doctor announced delay in minutes */
+    delayMinutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /** Reason for doctor delay */
+    delayReason: {
+      type: String,
+      trim: true,
+      maxlength: [300, 'Delay reason cannot exceed 300 characters'],
     },
 
     /** Current operational status of the queue */
@@ -200,41 +192,38 @@ const queueSchema = new mongoose.Schema(
       default: 'pending',
     },
 
-    /** Reason for pausing (shown to patients on the queue board) */
+    /** Reason for queue pause */
     pauseReason: {
       type: String,
       trim: true,
       maxlength: [200, 'Pause reason cannot exceed 200 characters'],
     },
 
-    /** When the queue was last paused */
+    /** Pause timestamp */
     pausedAt: {
       type: Date,
     },
 
-    /** When the queue was last resumed */
+    /** Resume timestamp */
     resumedAt: {
       type: Date,
     },
 
-    /** Cumulative pause duration in minutes (for accurate wait-time calculation) */
+    /** Cumulative pause duration in minutes */
     totalPauseDuration: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    /** Queue opened at this time */
     openedAt: {
       type: Date,
     },
 
-    /** Queue closed (all patients served or end of day) */
     closedAt: {
       type: Date,
     },
 
-    /** Admin override notes (e.g., 'Emergency — queue extended by 30 minutes') */
     adminNotes: {
       type: String,
       maxlength: 500,
@@ -248,54 +237,42 @@ const queueSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ───────────────────────────────────────────────────────────────────
-/** One queue document per doctor per day */
 queueSchema.index({ doctorId: 1, date: 1 }, { unique: true, name: 'unique_doctor_queue_day' });
-queueSchema.index({ status: 1, date: 1 });   // admin queue monitoring
+queueSchema.index({ status: 1, date: 1 });
 
 // ─── Virtuals ─────────────────────────────────────────────────────────────────
-/** Number of patients currently waiting (not yet called) */
 queueSchema.virtual('waitingCount').get(function () {
   return this.items.filter((i) => i.itemStatus === 'waiting').length;
 });
 
-/** Number of patients total in today's queue (active + completed) */
 queueSchema.virtual('totalPatients').get(function () {
   return this.items.length + this.completedItems.length;
 });
 
 // ─── Instance Methods ──────────────────────────────────────────────────────────
+
 /**
- * Get the 1-based position of an appointment in the active queue.
- * Returns -1 if the appointment is not found in the active items.
- * @param {mongoose.Types.ObjectId|string} appointmentId
- * @returns {number} 1-based position, or -1 if not found
+ * Get 1-based position of an appointment among waiting items.
  */
 queueSchema.methods.getPosition = function (appointmentId) {
   const id = appointmentId.toString();
-  const idx = this.items.findIndex(
-    (item) => item.appointmentId.toString() === id && item.itemStatus === 'waiting'
-  );
+  const waitingItems = this.items.filter((item) => item.itemStatus === 'waiting');
+  const idx = waitingItems.findIndex((item) => item.appointmentId.toString() === id);
   return idx === -1 ? -1 : idx + 1;
 };
 
 /**
- * Estimate the waiting time in minutes for a given appointment.
- * Accounts for the current in-progress consultation and all waiting patients ahead.
- * @param {mongoose.Types.ObjectId|string} appointmentId
- * @returns {number} Estimated wait in minutes (0 if it's their turn)
+ * Smart calculation of estimated wait time including doctor delay and position.
  */
 queueSchema.methods.getEstimatedWaitTime = function (appointmentId) {
   const position = this.getPosition(appointmentId);
   if (position <= 0) return 0;
-
-  // position - 1 patients are ahead, each takes averageConsultTime minutes
-  return (position - 1) * this.averageConsultTime;
+  const delay = this.delayMinutes || 0;
+  return Math.max(0, (position - 1) * this.averageConsultTime + delay);
 };
 
 /**
- * Recalculate averageConsultTime from completedItems[].
- * Call this after each patient consultation ends.
- * @returns {number} New average in minutes
+ * Recalculate average consultation time from completed items.
  */
 queueSchema.methods.recalculateAverageConsultTime = function () {
   const completed = this.completedItems.filter(
@@ -304,18 +281,19 @@ queueSchema.methods.recalculateAverageConsultTime = function () {
   if (completed.length === 0) return this.averageConsultTime;
 
   const total = completed.reduce((sum, i) => sum + i.actualConsultDuration, 0);
-  this.averageConsultTime = Math.round(total / completed.length);
+  this.averageConsultTime = Math.max(5, Math.round(total / completed.length));
   return this.averageConsultTime;
 };
 
 /**
- * Move the next waiting item to 'in-progress' (i.e., call the next patient).
- * Updates currentServing and currentNumber.
- * Returns the called item, or null if queue is empty.
- * @returns {Object|null}
+ * Move next waiting patient to 'called' / 'in-progress'.
  */
 queueSchema.methods.callNext = function () {
-  const nextItem = this.items.find((i) => i.itemStatus === 'waiting');
+  // Give priority to emergency items first, then regular waiting items
+  const nextItem =
+    this.items.find((i) => i.itemStatus === 'waiting' && i.isEmergency) ||
+    this.items.find((i) => i.itemStatus === 'waiting');
+
   if (!nextItem) return null;
 
   nextItem.itemStatus = 'called';
@@ -323,6 +301,81 @@ queueSchema.methods.callNext = function () {
   this.currentServing = nextItem.appointmentId;
   this.currentNumber  = nextItem.queueNumber;
   return nextItem;
+};
+
+/**
+ * Bump an appointment to Emergency priority (places it at top of waiting items).
+ */
+queueSchema.methods.addEmergencyItem = function (itemData) {
+  const existingIdx = this.items.findIndex(
+    (i) => i.appointmentId.toString() === itemData.appointmentId.toString()
+  );
+
+  let newItem;
+  if (existingIdx !== -1) {
+    newItem = this.items[existingIdx];
+    this.items.splice(existingIdx, 1);
+  } else {
+    newItem = {
+      appointmentId: itemData.appointmentId,
+      patientId: itemData.patientId,
+      queueNumber: itemData.queueNumber || this.nextQueueNumber++,
+      timeSlot: itemData.timeSlot,
+    };
+  }
+
+  newItem.isEmergency = true;
+  newItem.priority = 'emergency';
+  newItem.itemStatus = 'waiting';
+
+  // Find first waiting index to insert emergency item right at the front
+  const firstWaitingIdx = this.items.findIndex((i) => i.itemStatus === 'waiting');
+  if (firstWaitingIdx !== -1) {
+    this.items.splice(firstWaitingIdx, 0, newItem);
+  } else {
+    this.items.push(newItem);
+  }
+
+  return newItem;
+};
+
+/**
+ * Skip a patient (moves them to the end of the active waiting items).
+ */
+queueSchema.methods.skipItem = function (appointmentId) {
+  const idStr = appointmentId.toString();
+  const idx = this.items.findIndex((i) => i.appointmentId.toString() === idStr);
+  if (idx !== -1) {
+    const [skipped] = this.items.splice(idx, 1);
+    skipped.itemStatus = 'waiting'; // Keep in waiting status at end of queue
+    this.items.push(skipped);
+    return skipped;
+  }
+  return null;
+};
+
+/**
+ * Reorder waiting queue items based on an array of appointment IDs.
+ */
+queueSchema.methods.reorderItems = function (appointmentIds) {
+  const idOrder = appointmentIds.map((id) => id.toString());
+  
+  // Separate items into waiting and non-waiting
+  const waitingItems = this.items.filter((i) => i.itemStatus === 'waiting');
+  const nonWaitingItems = this.items.filter((i) => i.itemStatus !== 'waiting');
+
+  // Sort waiting items according to idOrder
+  waitingItems.sort((a, b) => {
+    const idxA = idOrder.indexOf(a.appointmentId.toString());
+    const idxB = idOrder.indexOf(b.appointmentId.toString());
+    if (idxA === -1) return 1;
+    if (idxB === -1) return -1;
+    return idxA - idxB;
+  });
+
+  // Re-combine non-waiting (in-progress/called) at front followed by sorted waiting items
+  this.items = [...nonWaitingItems, ...waitingItems];
+  return this.items;
 };
 
 module.exports = mongoose.model('Queue', queueSchema);

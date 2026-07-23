@@ -255,9 +255,15 @@ NODE_ENV=production npm start
 | GET | `/api/appointments` | Get my appointments | 🔒 Protected |
 | PUT | `/api/appointments/:id/status` | Update appointment status | 🔒 Doctor |
 | GET | `/api/queues/:doctorId` | Get doctor's live queue | 🔒 Protected |
-| POST | `/api/queues/:doctorId/advance` | Advance to next patient | 🔒 Doctor |
-| GET | `/api/admin/stats` | Dashboard statistics | 🔒 Admin |
-| GET | `/api/notifications` | Get my notifications | 🔒 Protected |
+| GET | `/api/queues/:doctorId/position/:appointmentId` | Get position & estimated wait | 🔒 Protected |
+| POST | `/api/queues/:doctorId/advance` | Call next patient in queue | 🔒 Doctor/Admin |
+| POST | `/api/queues/:doctorId/delay` | Announce doctor delay (mins & reason) | 🔒 Doctor/Admin |
+| POST | `/api/queues/:doctorId/emergency` | Bump appointment to Emergency Priority | 🔒 Doctor/Admin |
+| POST | `/api/queues/:doctorId/skip` | Move current patient to end of queue | 🔒 Doctor/Admin |
+| POST | `/api/queues/:doctorId/reorder` | Reorder waiting list items | 🔒 Doctor/Admin |
+| PUT | `/api/queues/:doctorId/pause` | Pause doctor queue | 🔒 Doctor/Admin |
+| PUT | `/api/queues/:doctorId/resume` | Resume doctor queue | 🔒 Doctor/Admin |
+| GET | `/api/queues/:doctorId/board` | Public Waiting Room Queue Board display | Public |
 
 Full API: `http://localhost:5000/api/health`
 

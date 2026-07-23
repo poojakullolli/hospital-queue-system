@@ -186,6 +186,19 @@ const QueueTracker = () => {
       {/* ── Called Banner ── */}
       {isCalled && <CalledBanner apt={activeApt} />}
 
+      {/* ── Doctor Delay Notice ── */}
+      {queueData?.delayMinutes > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-300 text-sm">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="font-semibold text-amber-300">
+              Doctor Schedule Notice: +{queueData.delayMinutes} min delay
+            </p>
+            {queueData.delayReason && <p className="text-xs text-slate-400 mt-0.5">{queueData.delayReason}</p>}
+          </div>
+        </div>
+      )}
+
       {/* ── Stats row ── */}
       <div className="grid grid-cols-3 gap-4">
         <QueueStat

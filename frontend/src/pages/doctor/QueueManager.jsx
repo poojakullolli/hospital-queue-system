@@ -1,14 +1,15 @@
 /**
  * QueueManager — the doctor's primary tool for running their daily queue.
  *
- * Features:
+ * Smart Queue Features:
  *  ─ Currently-serving card with Start / Complete / No-Show / Skip actions
  *  ─ Call Next Patient button
- *  ─ Waiting list with ordered queue numbers
+ *  ─ Emergency Priority bump button on waiting list items
+ *  ─ Waiting list with ordered queue numbers & status indicators
  *  ─ Pause / Resume queue with reason input
- *  ─ Update Delay announcement (broadcasts via socket)
+ *  ─ Update Doctor Delay announcement (broadcasting + updating wait calculation)
  *  ─ Prescription generator modal (offline printable HTML)
- *  ─ Real-time updates via Socket.IO (queue-updated event)
+ *  ─ Real-time updates via Socket.IO (queue-updated & emergency-added events)
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate }  from 'react-router-dom';
@@ -17,7 +18,7 @@ import {
   Play, SkipForward, CheckCircle, XCircle, Clock,
   PauseCircle, PlayCircle, RefreshCw, Users, Activity,
   FileText, ChevronRight, AlertCircle, Bell, Timer,
-  Stethoscope, Printer,
+  Stethoscope, Printer, ShieldAlert, AlertTriangle,
 } from 'lucide-react';
 
 import { useAuth }   from '../../hooks/useAuth';
@@ -44,7 +45,6 @@ const PrescriptionModal = ({ isOpen, onClose, appointment, doctor }) => {
     advice: '',
     followUp: '',
   });
-  const printRef = useRef();
 
   const addMedicine = () =>
     setRx((r) => ({
@@ -114,7 +114,6 @@ const PrescriptionModal = ({ isOpen, onClose, appointment, doctor }) => {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Generate Prescription" size="xl">
       <div className="space-y-5 pb-2">
-        {/* Patient info */}
         <div className="flex items-center gap-3 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl">
           <Stethoscope className="w-5 h-5 text-cyan-400 shrink-0" />
           <div>
@@ -125,7 +124,6 @@ const PrescriptionModal = ({ isOpen, onClose, appointment, doctor }) => {
           </div>
         </div>
 
-        {/* Diagnosis */}
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1.5">Diagnosis *</label>
           <textarea
@@ -137,7 +135,6 @@ const PrescriptionModal = ({ isOpen, onClose, appointment, doctor }) => {
           />
         </div>
 
-        {/* Medicines */}
         <div>
           <div className="flex justify-between items-center mb-2">
             <label className="text-sm font-medium text-slate-300">Medications</label>
@@ -162,15 +159,11 @@ const PrescriptionModal = ({ isOpen, onClose, appointment, doctor }) => {
                     className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs placeholder-slate-600 focus:outline-none focus:border-cyan-500"
                   />
                 ))}
-                {rx.medicines.length > 1 && (
-                  <button onClick={() => removeMed(i)} className="text-rose-400 hover:text-rose-300 col-span-1 hidden">✕</button>
-                )}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Advice + Follow-up */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Advice</label>
@@ -194,12 +187,10 @@ const PrescriptionModal = ({ isOpen, onClose, appointment, doctor }) => {
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex gap-3 pt-2">
           <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
           <Button variant="primary" className="flex-1" onClick={handlePrint}>
-            <Printer className="w-4 h-4 mr-2" />
-            Print / Download
+            <Printer className="w-4 h-4 mr-2" /> Print / Download
           </Button>
         </div>
       </div>
@@ -213,7 +204,7 @@ const DelayModal = ({ isOpen, onClose, onConfirm, loading }) => {
   const [reason, setReason]   = useState('');
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Update Delay" size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title="Update Doctor Delay" size="sm">
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1.5">Delay (minutes)</label>
@@ -228,12 +219,12 @@ const DelayModal = ({ isOpen, onClose, onConfirm, loading }) => {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Reason</label>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">Reason / Announcement</label>
           <textarea
             rows={2}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Emergency case, equipment issue..."
+            placeholder="e.g. Attending emergency surgery, traffic delay..."
             className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white text-sm placeholder-slate-600 resize-none focus:outline-none focus:border-cyan-500"
           />
         </div>
@@ -256,12 +247,12 @@ const PauseModal = ({ isOpen, onClose, onConfirm, loading }) => {
       <div className="space-y-4">
         <p className="text-sm text-slate-400">Patients will be notified that the queue is paused.</p>
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Reason <span className="text-slate-500 font-normal">(optional)</span></label>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">Reason</label>
           <textarea
             rows={2}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Short break, lunch, emergency..."
+            placeholder="e.g. Lunch break, procedure..."
             className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white text-sm placeholder-slate-600 resize-none focus:outline-none focus:border-cyan-500"
           />
         </div>
@@ -277,24 +268,50 @@ const PauseModal = ({ isOpen, onClose, onConfirm, loading }) => {
 };
 
 // ─── Waiting patient item ─────────────────────────────────────────────────────
-const WaitingItem = ({ apt, isNext }) => (
-  <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-    isNext
+const WaitingItem = ({ apt, isNext, onEmergency }) => (
+  <div className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+    apt.isEmergency
+      ? 'bg-rose-500/10 border-rose-500/30'
+      : isNext
       ? 'bg-cyan-500/10 border-cyan-500/30'
       : 'bg-slate-800/50 border-slate-800 hover:border-slate-700'
   }`}>
-    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
-      isNext ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'
-    }`}>
-      #{apt.queueNumber || '—'}
+    <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
+        apt.isEmergency
+          ? 'bg-rose-600 text-white animate-pulse'
+          : isNext
+          ? 'bg-cyan-600 text-white'
+          : 'bg-slate-800 text-slate-400 border border-slate-700'
+      }`}>
+        #{apt.queueNumber || '—'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-white truncate">{apt.patientId?.name || 'Patient'}</p>
+          {apt.isEmergency && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500 text-white shrink-0 uppercase tracking-wider">
+              Emergency
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-500">{apt.timeSlot?.start || '—'}</p>
+      </div>
     </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-semibold text-white truncate">{apt.patientId?.name || 'Patient'}</p>
-      <p className="text-xs text-slate-500">{apt.timeSlot?.start || '—'}</p>
+    <div className="flex items-center gap-1.5 shrink-0">
+      {!apt.isEmergency && (
+        <button
+          onClick={() => onEmergency(apt._id)}
+          title="Bump to Emergency Priority"
+          className="text-xs px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 rounded-lg transition-colors"
+        >
+          🚨 Emergency
+        </button>
+      )}
+      {isNext && !apt.isEmergency && (
+        <span className="text-xs text-cyan-400 font-medium px-2 py-1 bg-cyan-500/10 rounded-lg">Next</span>
+      )}
     </div>
-    {isNext && (
-      <span className="text-xs text-cyan-400 font-medium shrink-0">Next</span>
-    )}
   </div>
 );
 
@@ -341,7 +358,6 @@ const QueueManager = () => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Load appointments and queue in parallel
       const [aptRes, queueRes] = await Promise.allSettled([
         appointmentApi.getDoctorAppointments({ date: today, limit: 100 }),
         queueApi.getQueue(docId, today),
@@ -382,9 +398,11 @@ const QueueManager = () => {
     if (!socket || !doctorProfile?._id) return;
     const handler = () => loadQueueData(doctorProfile._id, true);
     socket.on('queue-updated', handler);
+    socket.on('emergency-added', handler);
     socket.on('appointment-status-changed', handler);
     return () => {
       socket.off('queue-updated', handler);
+      socket.off('emergency-added', handler);
       socket.off('appointment-status-changed', handler);
     };
   }, [socket, doctorProfile, loadQueueData]);
@@ -392,22 +410,18 @@ const QueueManager = () => {
   // ── Derived data ──
   const todayApts       = appointments;
   const waitingApts     = todayApts.filter((a) => ['pending', 'confirmed'].includes(a.status))
-                                   .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+                                   .sort((a, b) => (a.isEmergency ? -1 : 0) - (b.isEmergency ? -1 : 0) || (a.queueNumber || 0) - (b.queueNumber || 0));
   const completedApts   = todayApts.filter((a) => a.status === 'completed');
   const cancelledApts   = todayApts.filter((a) => ['cancelled', 'no-show'].includes(a.status));
 
-  // Find the currently-serving appointment
   const currentApt = todayApts.find((a) => a.status === 'in-progress')
     || (queue?.currentServing
         ? todayApts.find((a) => a._id === (queue.currentServing?._id || queue.currentServing))
         : null);
 
-  const nextApt    = waitingApts[0] || null;
   const isQueuePaused = queue?.status === 'paused';
 
   // ── Actions ──
-
-  /** Call next patient / advance queue */
   const handleCallNext = async () => {
     if (!doctorProfile?._id) { toast.error('Doctor profile not loaded.'); return; }
     setAdvancing(true);
@@ -422,7 +436,6 @@ const QueueManager = () => {
     }
   };
 
-  /** Mark current consultation as complete */
   const handleComplete = async () => {
     if (!currentApt?._id) return;
     setCompleting(true);
@@ -437,7 +450,6 @@ const QueueManager = () => {
     }
   };
 
-  /** Mark as no-show */
   const handleNoShow = async () => {
     if (!currentApt?._id) return;
     setNoShowing(true);
@@ -452,7 +464,6 @@ const QueueManager = () => {
     }
   };
 
-  /** Skip current patient (puts them at end of queue) */
   const handleSkip = async () => {
     if (!doctorProfile?._id || !currentApt?._id) return;
     try {
@@ -464,7 +475,6 @@ const QueueManager = () => {
     }
   };
 
-  /** Start consultation (in-progress) */
   const handleStart = async () => {
     if (!currentApt?._id) return;
     try {
@@ -476,7 +486,17 @@ const QueueManager = () => {
     }
   };
 
-  /** Pause queue */
+  const handleEmergency = async (appointmentId) => {
+    if (!doctorProfile?._id) return;
+    try {
+      await queueApi.addEmergency(doctorProfile._id, appointmentId);
+      toast.success('🚨 Patient bumped to Emergency Priority!');
+      await loadQueueData(doctorProfile._id, true);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to bump emergency.');
+    }
+  };
+
   const handlePause = async (reason) => {
     setPausingResume(true);
     try {
@@ -491,7 +511,6 @@ const QueueManager = () => {
     }
   };
 
-  /** Resume queue */
   const handleResume = async () => {
     setPausingResume(true);
     try {
@@ -505,12 +524,12 @@ const QueueManager = () => {
     }
   };
 
-  /** Announce delay via pause with delay reason */
   const handleDelay = async (minutes, reason) => {
+    if (!doctorProfile?._id) return;
     setPausingResume(true);
     try {
-      await queueApi.pauseQueue(doctorProfile._id, `Delay of ${minutes} minutes. ${reason}`);
-      toast.success(`Delay of ${minutes} min announced to patients.`);
+      await queueApi.setDelay(doctorProfile._id, minutes, reason);
+      toast.success(`Delay of ${minutes} min announced to waiting patients.`);
       setDelayModal(false);
       await loadQueueData(doctorProfile._id, true);
     } catch (err) {
@@ -524,39 +543,41 @@ const QueueManager = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Activity className="w-6 h-6 text-cyan-400" />
-            Queue Manager
+            Smart Queue Engine
           </h1>
           <p className="text-slate-400 text-sm mt-1">
             {formatDate(new Date(), 'EEEE, MMMM dd yyyy')} &nbsp;·&nbsp;
-            <span className={queue?.status === 'active' ? 'text-emerald-400' : 'text-amber-400'}>
-              Queue: {queue?.status ? queue.status.toUpperCase() : 'NOT STARTED'}
+            <span className={queue?.status === 'active' ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-semibold'}>
+              Queue Status: {queue?.status ? queue.status.toUpperCase() : 'NOT STARTED'}
             </span>
+            {queue?.delayMinutes > 0 && (
+              <span className="ml-2 text-rose-400 text-xs font-bold px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
+                +{queue.delayMinutes}m delay
+              </span>
+            )}
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Refresh */}
           <button
             onClick={() => doctorProfile?._id && loadQueueData(doctorProfile._id, true)}
             disabled={refreshing}
             className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl"
+            title="Refresh Queue"
           >
             <RefreshCw className={`w-5 h-5 text-slate-400 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
 
-          {/* Delay */}
           <Button size="sm" variant="outline" onClick={() => setDelayModal(true)}>
-            <Timer className="w-4 h-4 mr-1.5" />
+            <Timer className="w-4 h-4 mr-1.5 text-amber-400" />
             Update Delay
           </Button>
 
-          {/* Pause / Resume */}
           {isQueuePaused ? (
             <Button size="sm" variant="primary" isLoading={pausingResume} onClick={handleResume}>
               <PlayCircle className="w-4 h-4 mr-1.5" />
@@ -576,7 +597,7 @@ const QueueManager = () => {
         <div className="flex items-center gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
           <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-amber-300">Queue is paused</p>
+            <p className="text-sm font-semibold text-amber-300">Queue is currently paused</p>
             {queue?.pauseReason && <p className="text-xs text-slate-400 mt-0.5">{queue.pauseReason}</p>}
           </div>
           <Button size="sm" variant="primary" className="ml-auto" isLoading={pausingResume} onClick={handleResume}>
@@ -585,23 +606,15 @@ const QueueManager = () => {
         </div>
       )}
 
-      {/* ── Main two-column layout ── */}
+      {/* ── Main Layout ── */}
       <div className="grid lg:grid-cols-3 gap-6">
-
-        {/* ── Left: Currently Serving ── */}
+        {/* Left: Currently Serving & Main controls */}
         <div className="lg:col-span-2 space-y-4">
-
-          {/* Currently Serving card */}
           <div className={`relative overflow-hidden rounded-2xl border p-6 ${
             currentApt
               ? 'bg-gradient-to-br from-slate-900 via-cyan-950/30 to-slate-900 border-cyan-500/40 shadow-[0_0_40px_rgba(8,145,178,0.12)]'
               : 'bg-slate-900 border-slate-800'
           }`}>
-            {/* Glow */}
-            {currentApt && (
-              <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full blur-3xl opacity-10 bg-cyan-500 pointer-events-none" />
-            )}
-
             <div className="relative z-10">
               <p className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-4">
                 ● Currently Serving
@@ -609,7 +622,6 @@ const QueueManager = () => {
 
               {currentApt ? (
                 <>
-                  {/* Patient info */}
                   <div className="flex items-start justify-between gap-4 mb-6">
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/30 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center text-2xl font-bold text-white">
@@ -622,11 +634,6 @@ const QueueManager = () => {
                         <p className="text-slate-400 text-sm mt-0.5">
                           {currentApt.timeSlot?.start} – {currentApt.timeSlot?.end}
                         </p>
-                        {currentApt.patientNotes && (
-                          <p className="text-xs text-slate-500 mt-1 max-w-xs line-clamp-2">
-                            "{currentApt.patientNotes}"
-                          </p>
-                        )}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
@@ -639,12 +646,10 @@ const QueueManager = () => {
                     </div>
                   </div>
 
-                  {/* Action buttons */}
                   <div className="flex flex-wrap gap-3">
                     {currentApt.status === 'confirmed' && (
                       <Button variant="primary" className="flex-1 min-w-[130px]" onClick={handleStart}>
-                        <Play className="w-4 h-4 mr-2" />
-                        Start Consultation
+                        <Play className="w-4 h-4 mr-2" /> Start Consultation
                       </Button>
                     )}
                     {currentApt.status === 'in-progress' && (
@@ -654,34 +659,17 @@ const QueueManager = () => {
                         isLoading={completing}
                         onClick={handleComplete}
                       >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Complete
+                        <CheckCircle className="w-4 h-4 mr-2" /> Complete
                       </Button>
                     )}
-
-                    <Button
-                      variant="outline"
-                      onClick={handleSkip}
-                    >
-                      <SkipForward className="w-4 h-4 mr-2" />
-                      Skip
+                    <Button variant="outline" onClick={handleSkip}>
+                      <SkipForward className="w-4 h-4 mr-2" /> Skip
                     </Button>
-
-                    <Button
-                      variant="danger"
-                      isLoading={noShowing}
-                      onClick={handleNoShow}
-                    >
-                      <XCircle className="w-4 h-4 mr-2" />
-                      No Show
+                    <Button variant="danger" isLoading={noShowing} onClick={handleNoShow}>
+                      <XCircle className="w-4 h-4 mr-2" /> No Show
                     </Button>
-
-                    <Button
-                      variant="outline"
-                      onClick={() => setRxModal(true)}
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Prescription
+                    <Button variant="outline" onClick={() => setRxModal(true)}>
+                      <FileText className="w-4 h-4 mr-2" /> Prescription
                     </Button>
                   </div>
                 </>
@@ -695,7 +683,6 @@ const QueueManager = () => {
             </div>
           </div>
 
-          {/* Call Next button */}
           <Button
             variant="primary"
             className="w-full py-4 text-base font-semibold"
@@ -707,12 +694,11 @@ const QueueManager = () => {
             {waitingApts.length === 0 ? 'No Patients Waiting' : `Call Next Patient (${waitingApts.length} waiting)`}
           </Button>
 
-          {/* Stats row */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Waiting',   value: waitingApts.length,   color: 'text-amber-400'   },
-              { label: 'Completed', value: completedApts.length,  color: 'text-emerald-400' },
-              { label: 'No-Show',   value: cancelledApts.length,  color: 'text-rose-400'    },
+              { label: 'Waiting', value: waitingApts.length, color: 'text-amber-400' },
+              { label: 'Completed', value: completedApts.length, color: 'text-emerald-400' },
+              { label: 'No-Show', value: cancelledApts.length, color: 'text-rose-400' },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
                 <p className={`text-3xl font-bold ${color}`}>{value}</p>
@@ -722,12 +708,13 @@ const QueueManager = () => {
           </div>
         </div>
 
-        {/* ── Right: Waiting List ── */}
+        {/* Right: Waiting List with Emergency Priority Action */}
         <div className="flex flex-col gap-4">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Users className="w-5 h-5 text-cyan-400" />
-            Waiting List
-            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-bold px-2 py-0.5 rounded-full">
+          <h3 className="text-lg font-semibold text-white flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-cyan-400" /> Waiting List
+            </span>
+            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-bold px-2.5 py-0.5 rounded-full">
               {waitingApts.length}
             </span>
           </h3>
@@ -740,32 +727,19 @@ const QueueManager = () => {
               </div>
             ) : (
               waitingApts.map((apt, i) => (
-                <WaitingItem key={apt._id} apt={apt} isNext={i === 0} />
+                <WaitingItem
+                  key={apt._id}
+                  apt={apt}
+                  isNext={i === 0}
+                  onEmergency={handleEmergency}
+                />
               ))
             )}
           </div>
-
-          {/* Completed today mini list */}
-          {completedApts.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                Completed ({completedApts.length})
-              </p>
-              <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                {completedApts.map((apt) => (
-                  <div key={apt._id} className="flex items-center gap-2.5 px-3 py-2 bg-emerald-500/5 border border-emerald-500/10 rounded-lg">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    <span className="text-xs text-slate-300 truncate">{apt.patientId?.name || 'Patient'}</span>
-                    <span className="text-xs text-slate-600 ml-auto shrink-0">#{apt.queueNumber}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* ── Modals ── */}
+      {/* Modals */}
       <PrescriptionModal
         isOpen={rxModal}
         onClose={() => setRxModal(false)}
