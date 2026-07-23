@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { QueueProvider } from './context/QueueContext';
+import { NotificationProvider } from './context/NotificationContext';
 
 import ProtectedRoute from './components/layout/ProtectedRoute';
 
@@ -13,9 +14,10 @@ import Register from './pages/auth/Register';
 
 // Patient Pages
 import PatientDashboard from './pages/patient/Dashboard';
-import BookAppointment from './pages/patient/BookAppointment';
-import MyAppointments from './pages/patient/MyAppointments';
-import QueueTracker from './pages/patient/QueueTracker';
+import BookAppointment  from './pages/patient/BookAppointment';
+import MyAppointments   from './pages/patient/MyAppointments';
+import QueueTracker     from './pages/patient/QueueTracker';
+import Notifications    from './pages/patient/Notifications';
 
 // Doctor Pages
 import DoctorDashboard from './pages/doctor/Dashboard';
@@ -42,6 +44,7 @@ function App() {
       <AuthProvider>
         <SocketProvider>
           <QueueProvider>
+            <NotificationProvider>
             <Toaster
               position="top-right"
               toastOptions={{
@@ -61,10 +64,11 @@ function App() {
 
               {/* Patient Routes */}
               <Route element={<ProtectedRoute allowedRoles={['patient']} />}>
-                <Route path="/patient/dashboard" element={<PatientDashboard />} />
-                <Route path="/patient/book" element={<BookAppointment />} />
-                <Route path="/patient/appointments" element={<MyAppointments />} />
-                <Route path="/patient/queue" element={<QueueTracker />} />
+                <Route path="/patient/dashboard"      element={<PatientDashboard />} />
+                <Route path="/patient/book"           element={<BookAppointment />} />
+                <Route path="/patient/appointments"   element={<MyAppointments />} />
+                <Route path="/patient/queue"          element={<QueueTracker />} />
+                <Route path="/patient/notifications"  element={<Notifications />} />
               </Route>
 
               {/* Doctor Routes */}
@@ -85,6 +89,7 @@ function App() {
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </NotificationProvider>
           </QueueProvider>
         </SocketProvider>
       </AuthProvider>
