@@ -114,7 +114,6 @@ const departmentSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ───────────────────────────────────────────────────────────────────
-departmentSchema.index({ slug: 1 }, { unique: true });
 departmentSchema.index({ isActive: 1, sortOrder: 1 }); // default public list sort
 
 // ─── Virtuals ─────────────────────────────────────────────────────────────────

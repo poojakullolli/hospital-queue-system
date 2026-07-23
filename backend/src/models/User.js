@@ -261,7 +261,6 @@ const userSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ───────────────────────────────────────────────────────────────────
-userSchema.index({ email: 1 });               // fast login lookups
 userSchema.index({ role: 1, isActive: 1 });   // admin user-management filters
 userSchema.index({ createdAt: -1 });           // recent-first sorts
 

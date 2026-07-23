@@ -268,7 +268,6 @@ const doctorSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ───────────────────────────────────────────────────────────────────
-doctorSchema.index({ userId: 1 });
 doctorSchema.index({ specialty: 1, isAvailable: 1 });          // patient doctor-search
 doctorSchema.index({ departmentId: 1, isAvailable: 1 });       // department filter
 doctorSchema.index({ 'rating.average': -1 });                  // sort by top-rated
