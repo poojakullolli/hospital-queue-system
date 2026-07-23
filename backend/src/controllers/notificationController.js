@@ -1,4 +1,5 @@
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../middleware/AppError');
 const { successResponse } = require('../utils/apiResponse');
@@ -6,7 +7,7 @@ const { successResponse } = require('../utils/apiResponse');
 exports.getNotifications = asyncHandler(async (req, res, next) => {
   const notifications = await Notification.find({ userId: req.user.id })
     .sort('-createdAt')
-    .limit(50); // limit to last 50
+    .limit(50);
     
   successResponse(res, notifications);
 });
@@ -45,4 +46,20 @@ exports.deleteNotification = asyncHandler(async (req, res, next) => {
   }
 
   successResponse(res, null, 'Notification deleted');
+});
+
+/** Save / Register user FCM Device Token for push notifications */
+exports.updateFCMToken = asyncHandler(async (req, res, next) => {
+  const { fcmToken } = req.body;
+  if (!fcmToken) {
+    return next(new AppError('FCM token is required', 400));
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user.id,
+    { fcmToken },
+    { new: true }
+  );
+
+  successResponse(res, { fcmToken: user.fcmToken }, 'FCM Device Token updated');
 });

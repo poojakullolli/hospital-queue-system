@@ -1,22 +1,16 @@
 /**
- * NotificationContext — manages in-app notification state.
- *
- * Provides:
- *   notifications     — array of notification objects
- *   unreadCount       — number of unread notifications
- *   fetchNotifications— manually refresh
- *   markAsRead(id)    — mark one as read
- *   markAllAsRead()   — mark all as read
- *   deleteNotification(id) — delete one
+ * NotificationContext — manages in-app and FCM push notification state.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { notificationApi } from '../api/notificationApi';
+import { requestFCMToken, onForegroundMessage } from '../config/firebase';
 import { useAuth } from './AuthContext';
 
 const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -28,19 +22,48 @@ export const NotificationProvider = ({ children }) => {
     setLoading(true);
     try {
       const { data } = await notificationApi.getNotifications();
-      setNotifications(data?.data?.notifications || data?.notifications || []);
+      setNotifications(data?.data?.notifications || data?.data || data?.notifications || []);
     } catch (err) {
-      // Silently fail — notifications are non-critical
       console.error('Failed to fetch notifications:', err.message);
     } finally {
       setLoading(false);
     }
   }, [isAuthenticated]);
 
-  // Initial load + poll every 60 seconds (lightweight real-time alternative)
+  // Sync FCM device token with backend on login
+  useEffect(() => {
+    if (isAuthenticated) {
+      (async () => {
+        const token = await requestFCMToken();
+        if (token) {
+          try {
+            await notificationApi.updateFCMToken(token);
+          } catch (err) {
+            console.error('FCM Token sync error:', err);
+          }
+        }
+      })();
+    }
+  }, [isAuthenticated, user]);
+
+  // Listen for FCM foreground push notifications
+  useEffect(() => {
+    const unsubscribe = onForegroundMessage((payload) => {
+      if (payload?.notification) {
+        toast(payload.notification.title + '\n' + payload.notification.body, {
+          icon: '🔔',
+          duration: 6000,
+        });
+        fetchNotifications();
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchNotifications]);
+
+  // Initial load + poll every 45 seconds
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 60_000);
+    const interval = setInterval(fetchNotifications, 45_000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Queue Controller — handles HTTP API endpoints for Smart Queue Engine.
- * Emits real-time Socket.IO broadcasts & creates automated patient notifications.
+ * Emits real-time Socket.IO broadcasts, FCM push notifications, & creates in-app notifications.
  */
 
 const Doctor = require('../models/Doctor');
@@ -8,14 +8,12 @@ const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
 const queueService = require('../services/queueService');
 const emailService = require('../services/emailService');
+const fcmService = require('../services/fcmService');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../middleware/AppError');
 const { successResponse } = require('../utils/apiResponse');
 const socketConfig = require('../config/socket');
 
-/**
- * Get current queue status and items for a doctor.
- */
 exports.getQueue = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const date = req.query.date || new Date();
@@ -24,9 +22,6 @@ exports.getQueue = asyncHandler(async (req, res, next) => {
   successResponse(res, queue);
 });
 
-/**
- * Get patient's 1-based position and estimated wait time.
- */
 exports.getQueuePosition = asyncHandler(async (req, res, next) => {
   const { doctorId, appointmentId } = req.params;
   const date = req.query.date || new Date();
@@ -35,9 +30,6 @@ exports.getQueuePosition = asyncHandler(async (req, res, next) => {
   successResponse(res, status);
 });
 
-/**
- * Advance queue to call the next waiting patient.
- */
 exports.advanceQueue = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const date = req.query.date || new Date();
@@ -61,11 +53,11 @@ exports.advanceQueue = asyncHandler(async (req, res, next) => {
       // 1. Send Email Notification
       emailService.sendQueueCallNotification(appointment.patientId, appointment.doctorId, appointment).catch(console.error);
 
-      // 2. Create In-App Notification for called patient
-      await Notification.create({
+      // 2. Create In-App & FCM Push Notification for called patient
+      await fcmService.sendNotification({
         userId: appointment.patientId._id,
         title: "It's your turn!",
-        message: `Dr. ${appointment.doctorId?.userId?.name || 'Doctor'} is ready for your consultation. Token #${appointment.queueNumber}`,
+        body: `Dr. ${appointment.doctorId?.userId?.name || 'Doctor'} is ready for your consultation. Token #${appointment.queueNumber}`,
         type: 'appointment-called',
         appointmentId: appointment._id,
       });
@@ -85,17 +77,14 @@ exports.advanceQueue = asyncHandler(async (req, res, next) => {
         });
       }
 
-      // 4. Automated Lead Notification for next patient in line (Position #2)
+      // 4. Automated Lead Notification for next patient in line (Position #1 or #2)
       const waitingItems = queue.items.filter((i) => i.itemStatus === 'waiting');
       if (waitingItems.length > 0) {
-        const nextPatient = waitingItems[0];
-        await Notification.create({
-          userId: nextPatient.patientId,
-          title: "Get ready! You're next in queue.",
-          message: `Your token #${nextPatient.queueNumber} is next in line. Please approach the cabin.`,
-          type: 'queue-update',
-          appointmentId: nextPatient.appointmentId,
-        });
+        const nextPatientItem = waitingItems[0];
+        const nextApt = await Appointment.findById(nextPatientItem.appointmentId);
+        if (nextApt) {
+          fcmService.notifyQueueNearTurn(nextPatientItem.patientId, nextApt, nextPatientItem.queueNumber, 1).catch(console.error);
+        }
       }
     }
   } else {
@@ -115,26 +104,23 @@ exports.advanceQueue = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Announce Doctor Delay (sets delay offset in minutes).
+ * Announce Doctor Delay (sets delay offset in minutes & sends FCM push notices).
  */
 exports.setDelay = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const { minutes, reason } = req.body;
   const date = req.query.date || new Date();
 
+  const doctor = await Doctor.findById(doctorId).populate('userId');
+  const doctorName = doctor?.userId?.name || 'Doctor';
+
   const queue = await queueService.setDoctorDelay(doctorId, minutes, reason, date);
   const io = socketConfig.getIO();
 
-  // Notify waiting patients in app
+  // Notify waiting patients in app + FCM push
   const waitingItems = queue.items.filter((i) => i.itemStatus === 'waiting');
   for (const item of waitingItems) {
-    await Notification.create({
-      userId: item.patientId,
-      title: 'Doctor Delay Announcement',
-      message: `Dr. announced a delay of ${minutes} mins. ${reason ? `Reason: ${reason}` : ''}`,
-      type: 'queue-update',
-      appointmentId: item.appointmentId,
-    });
+    fcmService.notifyDoctorDelay(item.patientId, doctorName, minutes, reason, item.appointmentId).catch(console.error);
   }
 
   if (io) {
@@ -143,12 +129,9 @@ exports.setDelay = asyncHandler(async (req, res, next) => {
     io.to(`queue_room_${doctorId}`).emit('queue-delayed', { minutes, reason });
   }
 
-  successResponse(res, queue, `Delay of ${minutes} minutes recorded`);
+  successResponse(res, queue, `Delay of ${minutes} minutes recorded and broadcasted`);
 });
 
-/**
- * Bump an appointment to Emergency Priority.
- */
 exports.addEmergency = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const { appointmentId } = req.body;
@@ -166,9 +149,6 @@ exports.addEmergency = asyncHandler(async (req, res, next) => {
   successResponse(res, queue, 'Appointment bumped to Emergency Priority');
 });
 
-/**
- * Skip current patient and move them to end of queue.
- */
 exports.skipPatient = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const { appointmentId } = req.body;
@@ -185,9 +165,6 @@ exports.skipPatient = asyncHandler(async (req, res, next) => {
   successResponse(res, queue, 'Patient skipped');
 });
 
-/**
- * Reorder waiting queue items.
- */
 exports.reorderQueue = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const { appointmentIds } = req.body;
@@ -204,9 +181,6 @@ exports.reorderQueue = asyncHandler(async (req, res, next) => {
   successResponse(res, queue, 'Queue reordered successfully');
 });
 
-/**
- * Pause queue.
- */
 exports.pauseQueue = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const { reason } = req.body;
@@ -231,9 +205,6 @@ exports.pauseQueue = asyncHandler(async (req, res, next) => {
   successResponse(res, queue, 'Queue paused');
 });
 
-/**
- * Resume queue.
- */
 exports.resumeQueue = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const date = req.query.date || new Date();
@@ -257,9 +228,6 @@ exports.resumeQueue = asyncHandler(async (req, res, next) => {
   successResponse(res, queue, 'Queue resumed');
 });
 
-/**
- * Public Waiting Room Queue Board display info.
- */
 exports.getQueueBoard = asyncHandler(async (req, res, next) => {
   const { doctorId } = req.params;
   const date = req.query.date || new Date();
@@ -275,7 +243,6 @@ exports.getQueueBoard = asyncHandler(async (req, res, next) => {
   }
 
   const doctor = await Doctor.findById(doctorId).populate('userId', 'name');
-
   const waitingItems = queue.items.filter((i) => i.itemStatus === 'waiting');
   const nextUp = waitingItems.slice(0, 5).map((i) => ({
     queueNumber: i.queueNumber,

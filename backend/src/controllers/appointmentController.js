@@ -8,7 +8,8 @@ const { successResponse } = require('../utils/apiResponse');
 const generateQueueNumber = require('../utils/generateQueueNumber');
 const queueService = require('../services/queueService');
 const emailService = require('../services/emailService');
-const socketConfig = require('../config/socket'); // Assuming we can get io instance from here
+const fcmService = require('../services/fcmService');
+const socketConfig = require('../config/socket');
 
 exports.bookAppointment = asyncHandler(async (req, res, next) => {
   const { doctorId, date, timeSlot, patientNotes, consultationFee } = req.body;
@@ -52,16 +53,10 @@ exports.bookAppointment = asyncHandler(async (req, res, next) => {
   });
 
   // Add to Queue
-  await queueService.addToQueue(doctorId, appointment._id, targetDate);
+  await queueService.addToQueue(doctorId, appointment._id, patientId, queueNumber, timeSlot, false, targetDate);
 
-  // Notification
-  await Notification.create({
-    userId: patientId,
-    title: 'Appointment Confirmed',
-    message: `Your appointment with Dr. ${doctor.userId.name} on ${targetDate.toLocaleDateString()} is confirmed. Queue number: ${queueNumber}.`,
-    type: 'appointment-booked',
-    appointmentId: appointment._id
-  });
+  // Notification (In-App + FCM Push)
+  await fcmService.notifyAppointmentConfirmed(patientId, { ...appointment.toObject(), doctorId: doctor });
 
   // Send Email
   const patient = await User.findById(patientId);
@@ -135,12 +130,11 @@ exports.updateAppointmentStatus = asyncHandler(async (req, res, next) => {
     await Notification.create({
       userId: appointment.patientId._id,
       title: "It's your turn!",
-      message: `Dr. ${appointment.doctorId.userId.name} is ready to see you.`,
+      message: `Dr. ${appointment.doctorId?.userId?.name || 'Doctor'} is ready to see you.`,
       type: 'appointment-called',
       appointmentId: appointment._id
     });
     
-    // Broadcast via socket if available
     const io = socketConfig.getIO();
     if (io) {
       io.to(`patient_${appointment.patientId._id}`).emit('appointment-called', {
@@ -176,6 +170,10 @@ exports.cancelAppointment = asyncHandler(async (req, res, next) => {
   appointment.cancellationReason = reason;
   await appointment.save();
 
+  // FCM + In-App notification
+  await fcmService.notifyAppointmentCancelled(appointment.patientId._id, appointment, reason);
+
+  // Email notification
   emailService.sendAppointmentCancellation(appointment.patientId, appointment.doctorId, appointment, reason).catch(err => console.error(err));
 
   successResponse(res, appointment, 'Appointment cancelled successfully');

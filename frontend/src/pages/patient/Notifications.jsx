@@ -21,11 +21,16 @@ import { formatDateTime } from '../../utils/helpers';
 
 // ─── Type config ──────────────────────────────────────────────────────────────
 const TYPE_CONFIG = {
-  'appointment-booked':    { icon: '📅', label: 'Booking',    color: 'cyan'    },
-  'appointment-called':    { icon: '🔔', label: 'Called',     color: 'emerald' },
-  'appointment-completed': { icon: '✅', label: 'Completed',  color: 'emerald' },
-  'queue-update':          { icon: '🏥', label: 'Queue',      color: 'indigo'  },
-  'system':                { icon: 'ℹ️', label: 'System',     color: 'slate'   },
+  'appointment-booked':    { icon: '📅', label: 'Booking',        color: 'cyan'    },
+  'appointment-confirmed': { icon: '✅', label: 'Confirmed',      color: 'emerald' },
+  'appointment-reminder':  { icon: '⏰', label: 'Reminder',       color: 'amber'   },
+  'doctor-delay':          { icon: '⚠️', label: 'Doctor Delay',   color: 'rose'    },
+  'queue-near-turn':       { icon: '🚨', label: 'Turn Near',      color: 'cyan'    },
+  'appointment-called':    { icon: '🔔', label: 'Called',         color: 'emerald' },
+  'appointment-cancelled': { icon: '❌', label: 'Cancelled',      color: 'rose'    },
+  'appointment-completed': { icon: '🎉', label: 'Completed',      color: 'emerald' },
+  'queue-update':          { icon: '🏥', label: 'Queue',          color: 'indigo'  },
+  'system':                { icon: 'ℹ️', label: 'System',         color: 'slate'   },
 };
 
 const colourMap = {

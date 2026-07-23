@@ -226,6 +226,13 @@ const userSchema = new mongoose.Schema(
       type: Date,
     },
 
+    /** Firebase Cloud Messaging device token for push notifications */
+    fcmToken: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
     /** Notification preferences */
     notificationPreferences: {
       email: { type: Boolean, default: true },

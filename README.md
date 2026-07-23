@@ -263,7 +263,9 @@ NODE_ENV=production npm start
 | POST | `/api/queues/:doctorId/reorder` | Reorder waiting list items | 🔒 Doctor/Admin |
 | PUT | `/api/queues/:doctorId/pause` | Pause doctor queue | 🔒 Doctor/Admin |
 | PUT | `/api/queues/:doctorId/resume` | Resume doctor queue | 🔒 Doctor/Admin |
-| GET | `/api/queues/:doctorId/board` | Public Waiting Room Queue Board display | Public |
+| GET | `/api/notifications` | Get my notifications | 🔒 Protected |
+| POST | `/api/notifications/fcm-token` | Register FCM Device Token for Push | 🔒 Protected |
+| PUT | `/api/notifications/read-all` | Mark all notifications as read | 🔒 Protected |
 
 Full API: `http://localhost:5000/api/health`
 

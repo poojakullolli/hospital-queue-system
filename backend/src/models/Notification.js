@@ -84,6 +84,8 @@ const notificationSchema = new mongoose.Schema(
           'appointment-confirmed',   // doctor/system confirms
           'appointment-cancelled',   // any party cancels
           'appointment-reminder',    // 30-min/1-day reminder
+          'doctor-delay',            // doctor announced delay
+          'queue-near-turn',         // patient is position #2 near turn
           'appointment-called',      // patient's turn in queue
           'appointment-completed',   // consultation done
           'appointment-no-show',     // patient missed their slot
