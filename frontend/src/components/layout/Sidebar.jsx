@@ -33,10 +33,10 @@ const Sidebar = ({ role, isOpen, onClose }) => {
       { name: 'Notifications',   path: '/patient/notifications', icon: Bell, badge: unreadCount },
     ],
     doctor: [
-      { name: 'Dashboard',   path: '/doctor/dashboard', icon: LayoutDashboard },
-      { name: 'Queue Manager', path: '/doctor/queue',   icon: Activity        },
-      { name: 'My Schedule', path: '/doctor/schedule',  icon: CalendarDays    },
-      { name: 'Patients',    path: '/doctor/patients',  icon: Users           },
+      { name: 'Dashboard',    path: '/doctor/dashboard', icon: LayoutDashboard },
+      { name: 'Queue Manager',path: '/doctor/queue',     icon: Activity        },
+      { name: 'My Schedule',  path: '/doctor/schedule',  icon: CalendarDays    },
+      { name: 'Analytics',    path: '/doctor/analytics', icon: BarChart3       },
     ],
     admin: [
       { name: 'Dashboard',   path: '/admin/dashboard',   icon: LayoutDashboard },

@@ -21,8 +21,9 @@ import Notifications    from './pages/patient/Notifications';
 
 // Doctor Pages
 import DoctorDashboard from './pages/doctor/Dashboard';
-import QueueManager from './pages/doctor/QueueManager';
-import Schedule from './pages/doctor/Schedule';
+import QueueManager    from './pages/doctor/QueueManager';
+import Schedule        from './pages/doctor/Schedule';
+import DoctorAnalytics from './pages/doctor/Analytics';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/Dashboard';
@@ -73,9 +74,10 @@ function App() {
 
               {/* Doctor Routes */}
               <Route element={<ProtectedRoute allowedRoles={['doctor']} />}>
-                <Route path="/doctor/dashboard" element={<DoctorDashboard />} />
-                <Route path="/doctor/queue" element={<QueueManager />} />
-                <Route path="/doctor/schedule" element={<Schedule />} />
+                <Route path="/doctor/dashboard"  element={<DoctorDashboard />} />
+                <Route path="/doctor/queue"      element={<QueueManager />} />
+                <Route path="/doctor/schedule"   element={<Schedule />} />
+                <Route path="/doctor/analytics"  element={<DoctorAnalytics />} />
               </Route>
 
               {/* Admin Routes */}
