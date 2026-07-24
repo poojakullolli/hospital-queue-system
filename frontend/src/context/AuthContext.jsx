@@ -20,7 +20,7 @@ export const AuthProvider = ({ children }) => {
           const { data } = await authApi.getMe();
           setUser(data.user);
         } catch (error) {
-          console.error('Auth init error:', error);
+          // Quietly clear expired/invalid token
           localStorage.removeItem('mediqueue_token');
           setToken(null);
           setUser(null);
