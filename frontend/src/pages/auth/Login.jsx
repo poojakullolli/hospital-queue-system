@@ -8,10 +8,22 @@ import Card from '../../components/common/Card';
 import { Hospital, LogIn, ShieldCheck, Stethoscope, User, Sparkles, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const Login = ({ portalRole: defaultPortalRole }) => {
-  const { login } = useAuth();
+  const { user: currentUser, isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Auto-redirect if user is already logged in
+  useEffect(() => {
+    if (isAuthenticated && currentUser?.role) {
+      const target =
+        currentUser.role === 'admin'
+          ? '/admin/dashboard'
+          : currentUser.role === 'doctor'
+          ? '/doctor/dashboard'
+          : '/patient/dashboard';
+      navigate(target, { replace: true });
+    }
+  }, [isAuthenticated, currentUser, navigate]);
 
   // Detect portal role from path if not provided as prop
   let roleFromPath = defaultPortalRole;
@@ -91,21 +103,23 @@ const Login = ({ portalRole: defaultPortalRole }) => {
   const onSubmit = async (data) => {
     setBackendError('');
     try {
-      const user = await login({
+      const loggedUser = await login({
         email: data.email.trim(),
         password: data.password,
       });
 
-      toast.success(`Welcome back, ${user?.name || 'User'}! Login successful.`);
+      toast.success(`Welcome back, ${loggedUser?.name || 'User'}! Login successful.`);
 
-      // Redirect according to user role
-      if (user?.role === 'admin') {
-        navigate('/admin/dashboard');
-      } else if (user?.role === 'doctor') {
-        navigate('/doctor/dashboard');
-      } else {
-        navigate('/patient/dashboard');
-      }
+      const targetPath =
+        loggedUser?.role === 'admin'
+          ? '/admin/dashboard'
+          : loggedUser?.role === 'doctor'
+          ? '/doctor/dashboard'
+          : '/patient/dashboard';
+
+      setTimeout(() => {
+        navigate(targetPath, { replace: true });
+      }, 50);
     } catch (err) {
       const errMsg = err.response?.data?.message || 'Login failed. Please check your credentials.';
       setBackendError(errMsg);
