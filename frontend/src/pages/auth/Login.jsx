@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
-import { Hospital, LogIn, ShieldCheck, Stethoscope, User, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Hospital, LogIn, ShieldCheck, Stethoscope, User, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const Login = ({ portalRole: defaultPortalRole }) => {
   const { user: currentUser, isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -140,7 +141,7 @@ import toast from 'react-hot-toast';
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <Link to="/" className="flex items-center gap-2 text-white font-bold">
-                <div className="p-2 bg-cyan-500/20 rounded-xl border border-cyan-500/30">
+                <div className="p-2 bg-cyan-500/20 rounded-lg border border-cyan-500/30">
                   <Hospital className="w-6 h-6 text-cyan-400" />
                 </div>
                 <span className="text-xl">MediQueue</span>
