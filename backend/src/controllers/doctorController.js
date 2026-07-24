@@ -4,6 +4,36 @@ const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../middleware/AppError');
 const { successResponse } = require('../utils/apiResponse');
 
+// Helper to find or auto-create doctor profile for doctor user
+const getOrCreateDoctorForUser = async (user) => {
+  let doctor = await Doctor.findOne({ userId: user.id || user._id }).populate('userId', 'name email avatar phone');
+  if (!doctor && user.role === 'doctor') {
+    doctor = await Doctor.create({
+      userId: user.id || user._id,
+      specialty: 'General Medicine',
+      qualifications: ['MBBS', 'MD'],
+      experience: 5,
+      workingHours: { start: '09:00', end: '17:00', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
+      consultationDuration: 15,
+      fee: 500,
+      bio: 'General physician providing expert healthcare.',
+      rating: 4.8,
+      isAvailable: true,
+      isOnBreak: false,
+    });
+    doctor = await Doctor.findById(doctor._id).populate('userId', 'name email avatar phone');
+  }
+  return doctor;
+};
+
+exports.getDoctorProfileMe = asyncHandler(async (req, res, next) => {
+  const doctor = await getOrCreateDoctorForUser(req.user);
+  if (!doctor) {
+    return next(new AppError('Doctor profile not found', 404));
+  }
+  successResponse(res, doctor);
+});
+
 exports.getAllDoctors = asyncHandler(async (req, res, next) => {
   const { specialty, isAvailable, sort, page = 1, limit = 10 } = req.query;
   
@@ -66,7 +96,7 @@ exports.getAvailableSlots = asyncHandler(async (req, res, next) => {
   
   const startTime = startHours * 60 + startMins;
   const endTime = endHours * 60 + endMins;
-  const duration = doctor.consultationDuration;
+  const duration = doctor.consultationDuration || 15;
 
   // Generate all possible slots
   const allSlots = [];
@@ -103,8 +133,7 @@ exports.getAvailableSlots = asyncHandler(async (req, res, next) => {
 });
 
 exports.updateDoctorProfile = asyncHandler(async (req, res, next) => {
-  const doctor = await Doctor.findOne({ userId: req.user.id });
-  
+  let doctor = await getOrCreateDoctorForUser(req.user);
   if (!doctor) {
     return next(new AppError('Doctor profile not found', 404));
   }
@@ -120,23 +149,19 @@ exports.updateDoctorProfile = asyncHandler(async (req, res, next) => {
 
 exports.setAvailability = asyncHandler(async (req, res, next) => {
   const { isAvailable } = req.body;
-  
-  const doctor = await Doctor.findOneAndUpdate(
-    { userId: req.user.id },
-    { isAvailable },
-    { new: true }
-  );
-
+  let doctor = await getOrCreateDoctorForUser(req.user);
   if (!doctor) {
     return next(new AppError('Doctor profile not found', 404));
   }
+
+  doctor.isAvailable = isAvailable;
+  await doctor.save();
 
   successResponse(res, doctor, `Availability set to ${isAvailable}`);
 });
 
 exports.toggleBreak = asyncHandler(async (req, res, next) => {
-  const doctor = await Doctor.findOne({ userId: req.user.id });
-  
+  let doctor = await getOrCreateDoctorForUser(req.user);
   if (!doctor) {
     return next(new AppError('Doctor profile not found', 404));
   }
@@ -148,8 +173,7 @@ exports.toggleBreak = asyncHandler(async (req, res, next) => {
 });
 
 exports.getDoctorStats = asyncHandler(async (req, res, next) => {
-  const doctor = await Doctor.findOne({ userId: req.user.id });
-  
+  let doctor = await getOrCreateDoctorForUser(req.user);
   if (!doctor) {
     return next(new AppError('Doctor profile not found', 404));
   }

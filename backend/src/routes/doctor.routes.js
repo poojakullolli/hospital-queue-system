@@ -6,11 +6,16 @@ const {
   updateDoctorProfile, 
   setAvailability, 
   toggleBreak,
-  getDoctorStats
+  getDoctorStats,
+  getDoctorProfileMe
 } = require('../controllers/doctorController');
 const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Protected doctor profile routes (place BEFORE /:id to prevent route collision)
+router.get('/profile/me', protect, authorize('doctor'), getDoctorProfileMe);
+router.get('/me/profile', protect, authorize('doctor'), getDoctorProfileMe);
 
 // Public routes
 router.get('/', getAllDoctors);
@@ -22,6 +27,7 @@ router.use(protect);
 router.use(authorize('doctor'));
 
 router.get('/stats/dashboard', getDoctorStats);
+router.put('/me', updateDoctorProfile);
 router.put('/:id', updateDoctorProfile);
 router.put('/:id/availability', setAvailability);
 router.put('/:id/break', toggleBreak);

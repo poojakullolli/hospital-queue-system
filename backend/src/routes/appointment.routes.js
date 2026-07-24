@@ -18,6 +18,7 @@ router.use(protect);
 // Patient & My Appointments routes
 router.post('/', authorize('patient'), createAppointmentValidation, bookAppointment);
 router.get('/my', authorize('patient', 'doctor', 'admin'), getMyAppointments);
+router.get('/doctor', authorize('doctor'), getDoctorAppointments);
 router.get('/', authorize('patient', 'doctor', 'admin'), (req, res, next) => {
   if (req.user.role === 'patient') {
     return getMyAppointments(req, res, next);
