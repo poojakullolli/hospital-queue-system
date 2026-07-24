@@ -5,7 +5,7 @@ import PageWrapper from './PageWrapper';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ allowedRoles }) => {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, token, isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -15,11 +15,23 @@ const ProtectedRoute = ({ allowedRoles }) => {
     );
   }
 
-  if (!isAuthenticated) {
+  const storedToken = token || localStorage.getItem('mediqueue_token');
+  let activeUser = user;
+  if (!activeUser) {
+    try {
+      const storedRaw = localStorage.getItem('mediqueue_user');
+      if (storedRaw) activeUser = JSON.parse(storedRaw);
+    } catch (e) {}
+  }
+
+  const isAuth = isAuthenticated || (!!storedToken && !!activeUser);
+
+  if (!isAuth) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+  const userRole = activeUser?.role;
+  if (allowedRoles && (!userRole || !allowedRoles.includes(userRole))) {
     return <Navigate to="/unauthorized" replace />;
   }
 

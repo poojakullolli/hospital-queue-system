@@ -8,28 +8,46 @@ const AuthContext = createContext();
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000;
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('mediqueue_token'));
+  const [token, setToken] = useState(() => localStorage.getItem('mediqueue_token'));
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('mediqueue_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const inactivityTimerRef = useRef(null);
 
   useEffect(() => {
     const initAuth = async () => {
-      if (token) {
+      const storedToken = localStorage.getItem('mediqueue_token');
+      if (storedToken) {
         try {
           const { data } = await authApi.getMe();
-          setUser(data.user);
+          const meUser = data.user || data.data?.user;
+          if (meUser) {
+            setUser(meUser);
+            localStorage.setItem('mediqueue_user', JSON.stringify(meUser));
+          }
         } catch (error) {
-          // Quietly clear expired/invalid token
+          // Clear expired or invalid session data quietly
           localStorage.removeItem('mediqueue_token');
+          localStorage.removeItem('mediqueue_user');
           setToken(null);
           setUser(null);
         }
+      } else {
+        localStorage.removeItem('mediqueue_token');
+        localStorage.removeItem('mediqueue_user');
+        setToken(null);
+        setUser(null);
       }
       setIsLoading(false);
     };
     initAuth();
-  }, [token]);
+  }, []);
 
   const logout = useCallback(async (isAuto = false) => {
     try {
@@ -38,6 +56,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error', error);
     } finally {
       localStorage.removeItem('mediqueue_token');
+      localStorage.removeItem('mediqueue_user');
       setToken(null);
       setUser(null);
       if (isAuto) {
@@ -78,11 +97,19 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       const { data } = await authApi.login(credentials);
-      const authToken = data.token || data.accessToken;
+      const authToken = data.token || data.accessToken || data.data?.token;
+      const userObj = data.user || data.data?.user;
+
+      if (!authToken || !userObj) {
+        throw new Error('Invalid response structure from login API.');
+      }
+
       localStorage.setItem('mediqueue_token', authToken);
+      localStorage.setItem('mediqueue_user', JSON.stringify(userObj));
+
       setToken(authToken);
-      setUser(data.user);
-      return data.user;
+      setUser(userObj);
+      return userObj;
     } catch (error) {
       throw error;
     }
@@ -91,18 +118,29 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const { data } = await authApi.register(userData);
-      const authToken = data.token || data.accessToken;
-      localStorage.setItem('mediqueue_token', authToken);
-      setToken(authToken);
-      setUser(data.user);
-      return data.user;
+      const authToken = data.token || data.accessToken || data.data?.token;
+      const userObj = data.user || data.data?.user;
+
+      if (authToken) {
+        localStorage.setItem('mediqueue_token', authToken);
+        setToken(authToken);
+      }
+      if (userObj) {
+        localStorage.setItem('mediqueue_user', JSON.stringify(userObj));
+        setUser(userObj);
+      }
+      return userObj;
     } catch (error) {
       throw error;
     }
   };
 
   const updateUser = (userData) => {
-    setUser((prev) => ({ ...prev, ...userData }));
+    setUser((prev) => {
+      const updated = { ...prev, ...userData };
+      localStorage.setItem('mediqueue_user', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   return (
@@ -111,7 +149,7 @@ export const AuthProvider = ({ children }) => {
         user,
         token,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!token,
         login,
         register,
         logout: () => logout(false),
