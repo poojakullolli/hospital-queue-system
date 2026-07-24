@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
-import { Hospital, LogIn, ShieldCheck, Stethoscope, User, Sparkles } from 'lucide-react';
+import { Hospital, LogIn, ShieldCheck, Stethoscope, User, Sparkles, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Login = ({ portalRole: defaultPortalRole }) => {
@@ -13,7 +13,7 @@ const Login = ({ portalRole: defaultPortalRole }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Detect role from route (/admin/login, /doctor/login, /patient/login) if not passed as prop
+  // Detect portal role from path if not provided as prop
   let roleFromPath = defaultPortalRole;
   if (!roleFromPath) {
     if (location.pathname.includes('/admin')) roleFromPath = 'admin';
@@ -22,20 +22,26 @@ const Login = ({ portalRole: defaultPortalRole }) => {
   }
 
   const [selectedRole, setSelectedRole] = useState(roleFromPath || 'patient');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [backendError, setBackendError] = useState('');
 
   const {
     register,
     handleSubmit,
     setValue,
-    formState: { errors, isSubmitting },
+    watch,
+    formState: { errors, isValid, isSubmitting, touchedFields },
   } = useForm({
+    mode: 'onChange',
     defaultValues: {
       email: selectedRole === 'admin' ? 'admin@hospital.com' : selectedRole === 'doctor' ? 'doctor1@example.com' : 'patient1@example.com',
       password: selectedRole === 'admin' ? 'Admin@123' : selectedRole === 'doctor' ? 'Doctor@123' : 'Patient@123',
     },
   });
 
-  // Role portal configurations
+  const emailValue = watch('email');
+  const passwordValue = watch('password');
+
   const roleConfigs = {
     admin: {
       title: 'Admin Portal',
@@ -48,7 +54,7 @@ const Login = ({ portalRole: defaultPortalRole }) => {
     },
     doctor: {
       title: 'Doctor Portal',
-      subtitle: 'Medical Staff & Queue Management Console',
+      subtitle: 'Medical Staff & Live Queue Manager',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       buttonBg: 'bg-indigo-600 hover:bg-indigo-500',
       icon: Stethoscope,
@@ -71,9 +77,10 @@ const Login = ({ portalRole: defaultPortalRole }) => {
 
   const handleRoleChange = (role) => {
     setSelectedRole(role);
+    setBackendError('');
     const cfg = roleConfigs[role];
-    setValue('email', cfg.demoEmail);
-    setValue('password', cfg.demoPass);
+    setValue('email', cfg.demoEmail, { shouldValidate: true, shouldTouch: true });
+    setValue('password', cfg.demoPass, { shouldValidate: true, shouldTouch: true });
   };
 
   const fillDemo = (role) => {
@@ -82,13 +89,16 @@ const Login = ({ portalRole: defaultPortalRole }) => {
   };
 
   const onSubmit = async (data) => {
+    setBackendError('');
     try {
       const user = await login({
         email: data.email.trim(),
         password: data.password,
       });
 
-      // Role-based redirection after login
+      toast.success(`Welcome back, ${user?.name || 'User'}! Login successful.`);
+
+      // Redirect according to user role
       if (user?.role === 'admin') {
         navigate('/admin/dashboard');
       } else if (user?.role === 'doctor') {
@@ -96,92 +106,120 @@ const Login = ({ portalRole: defaultPortalRole }) => {
       } else {
         navigate('/patient/dashboard');
       }
-    } catch (error) {
-      console.error('Login submit error:', error);
-      // Toast message displayed by AuthContext
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Login failed. Please check your credentials.';
+      setBackendError(errMsg);
+      toast.error(errMsg);
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4 relative overflow-hidden">
-      {/* Glow decorations */}
+      {/* Background decoration */}
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl" />
       <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
 
       <Card glass className="w-full max-w-4xl grid md:grid-cols-2 overflow-hidden z-10 border-slate-700/50">
         <div className="p-8 md:p-10 flex flex-col justify-center relative bg-slate-900/50">
           
-          {/* Header */}
+          {/* Top Brand & Role */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <Link to="/" className="flex items-center gap-2 text-white font-bold">
-                <div className="p-2 bg-cyan-500/20 rounded-lg border border-cyan-500/30">
+                <div className="p-2 bg-cyan-500/20 rounded-xl border border-cyan-500/30">
                   <Hospital className="w-6 h-6 text-cyan-400" />
                 </div>
-                MediQueue
+                <span className="text-xl">MediQueue</span>
               </Link>
               <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${currentConfig.badgeColor} flex items-center gap-1.5`}>
                 <RoleIcon className="w-3.5 h-3.5" /> {currentConfig.title}
               </span>
             </div>
 
-            <h1 className="text-2xl font-bold text-white mb-1">{currentConfig.title} Login</h1>
-            <p className="text-slate-400 text-sm">{currentConfig.subtitle}</p>
+            <h1 className="text-2xl font-bold text-white mb-1">{currentConfig.title} Sign In</h1>
+            <p className="text-slate-400 text-xs">{currentConfig.subtitle}</p>
           </div>
 
           {/* Role selector tabs */}
           <div className="flex p-1 bg-slate-800/80 rounded-xl mb-6 border border-slate-700/50">
-            {['patient', 'doctor', 'admin'].map((role) => (
+            {['patient', 'doctor', 'admin'].map((r) => (
               <button
-                key={role}
+                key={r}
                 type="button"
-                onClick={() => handleRoleChange(role)}
+                onClick={() => handleRoleChange(r)}
                 className={`flex-1 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all ${
-                  selectedRole === role
+                  selectedRole === r
                     ? 'bg-slate-700 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {role}
+                {r}
               </button>
             ))}
           </div>
 
-          {/* Form */}
+          {/* Backend error banner */}
+          {backendError && (
+            <div className="mb-4 p-3 bg-rose-950/40 border border-rose-500/50 rounded-xl text-rose-300 text-xs font-medium flex items-center gap-2 animate-shake">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              {backendError}
+            </div>
+          )}
+
+          {/* Login Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input
               label="Email Address"
               type="email"
-              placeholder="Enter your email"
-              {...register('email', { required: 'Email is required' })}
+              placeholder="example@gmail.com"
+              {...register('email', {
+                required: 'Email is required.',
+                pattern: {
+                  value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                  message: 'Please enter a valid email address.',
+                },
+              })}
               error={errors.email?.message}
+              isValid={touchedFields.email && !errors.email && !!emailValue}
             />
 
             <Input
               label="Password"
               type="password"
               placeholder="Enter your password"
-              {...register('password', { required: 'Password is required' })}
+              {...register('password', {
+                required: 'Password is required.',
+              })}
               error={errors.password?.message}
+              isValid={touchedFields.password && !errors.password && !!passwordValue}
             />
 
-            <div className="flex items-center justify-between text-xs">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center justify-between text-xs pt-1">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 transition-colors">
                 <input
                   type="checkbox"
-                  defaultChecked
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-slate-900"
                 />
-                <span className="text-slate-400">Remember session</span>
+                Remember Me
               </label>
+              <Link to="/forgot-password" className="text-cyan-400 hover:text-cyan-300 font-medium">
+                Forgot Password?
+              </Link>
             </div>
 
             <Button
               type="submit"
-              className={`w-full mt-2 ${currentConfig.buttonBg}`}
+              disabled={!isValid || isSubmitting}
               isLoading={isSubmitting}
+              className={`w-full mt-3 py-2.5 font-semibold text-sm rounded-xl transition-all ${
+                !isValid || isSubmitting
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : currentConfig.buttonBg
+              }`}
             >
-              <LogIn className="w-5 h-5 mr-2" />
+              <LogIn className="w-4 h-4 mr-2" />
               Sign In to {currentConfig.title}
             </Button>
           </form>
@@ -190,7 +228,7 @@ const Login = ({ portalRole: defaultPortalRole }) => {
           <div className="mt-6 pt-4 border-t border-slate-800">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
               <span className="flex items-center gap-1 font-medium text-slate-300">
-                <Sparkles className="w-3.5 h-3.5 text-yellow-400" /> 1-Click Demo Login:
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Quick Demo Credentials:
               </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -239,7 +277,7 @@ const Login = ({ portalRole: defaultPortalRole }) => {
                 MediQueue {currentConfig.title}
               </h2>
               <p className="text-slate-300 text-sm leading-relaxed mb-6">
-                Access your personalized healthcare dashboard, real-time live queue statuses, and complete appointment records.
+                Access your personalized dashboard, real-time live queue statuses, and complete appointment records securely.
               </p>
             </div>
 

@@ -178,7 +178,7 @@ exports.login = asyncHandler(async (req, res, next) => {
       message: `Failed login attempt for non-existent email: ${email}`,
       req,
     });
-    return next(new AppError('Invalid credentials', 401));
+    return next(new AppError('Account not found.', 404));
   }
 
   if (!user.isActive) {
@@ -201,7 +201,7 @@ exports.login = asyncHandler(async (req, res, next) => {
       req,
       userId: user._id,
     });
-    return next(new AppError('Invalid credentials', 401));
+    return next(new AppError('Incorrect password.', 401));
   }
 
   user.lastLogin = new Date();
@@ -235,7 +235,7 @@ exports.adminLogin = asyncHandler(async (req, res, next) => {
       message: `Failed admin login attempt for email: ${email}`,
       req,
     });
-    return next(new AppError('Invalid credentials', 401));
+    return next(new AppError('Account not found.', 404));
   }
 
   if (user.role !== 'admin') {
@@ -262,7 +262,7 @@ exports.adminLogin = asyncHandler(async (req, res, next) => {
       req,
       userId: user._id,
     });
-    return next(new AppError('Invalid credentials', 401));
+    return next(new AppError('Incorrect password.', 401));
   }
 
   user.lastLogin = new Date();

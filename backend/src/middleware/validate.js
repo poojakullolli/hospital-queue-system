@@ -35,29 +35,30 @@ const nameRule = () =>
   check('name')
     .customSanitizer((val, { req }) => req.body.name || req.body.fullName)
     .trim()
-    .notEmpty().withMessage('Name is required')
-    .isLength({ min: 2, max: 80 }).withMessage('Name must be between 2 and 80 characters');
+    .notEmpty().withMessage('Name is required.')
+    .isLength({ min: 3, max: 80 }).withMessage('Name must contain at least 3 letters.')
+    .matches(/^[a-zA-Z\s.'-]+$/).withMessage('Name can contain letters, spaces, dots, hyphens, or apostrophes.');
 
 const emailRule = (field = 'email') =>
   check(field)
     .trim()
-    .notEmpty().withMessage('Email is required')
-    .isEmail().withMessage('Please provide a valid email address')
+    .notEmpty().withMessage('Email is required.')
+    .isEmail().withMessage('Please enter a valid email address.')
     .normalizeEmail();
 
 const passwordRule = (field = 'password', label = 'Password') =>
   check(field)
-    .notEmpty().withMessage(`${label} is required`)
-    .isLength({ min: 6 }).withMessage(`${label} must be at least 6 characters`)
+    .notEmpty().withMessage(`${label} is required.`)
+    .isLength({ min: 8 }).withMessage(`${label} must contain at least 8 characters.`)
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage(
-      `${label} must contain at least one uppercase letter, one lowercase letter, and one number`
+      `${label} must contain at least one uppercase letter, one lowercase letter, and one number.`
     );
 
 const phoneRule = () =>
   check('phone')
     .optional({ nullable: true, checkFalsy: true })
     .trim()
-    .matches(/^\+?[\d\s\-().]{7,20}$/).withMessage('Please provide a valid phone number');
+    .matches(/^(\+?\d{1,4}[\s-]?)?\d{7,10}$/).withMessage('Phone number must contain exactly 10 digits.');
 
 const tokenRule = (field = 'token') =>
   check(field)
